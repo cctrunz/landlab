@@ -32,13 +32,14 @@ from .depth_dependent_cubic_soil_creep import DepthDependentCubicDiffuser
 from .erosion_deposition import ErosionDeposition
 from .space import Space
 from .landslides import LandslideProbability
+from .conduit_networks import PresFlowNetwork
 
 COMPONENTS = [ChiFinder, LinearDiffuser,
               Flexure, FlowRouter, DepressionFinderAndRouter,
               PerronNLDiffuse, OverlandFlowBates, OverlandFlow,
               KinwaveImplicitOverlandFlow,
               PotentialEvapotranspiration, PotentialityFlowRouter,
-              Radiation, SinkFiller, 
+              Radiation, SinkFiller,
               StreamPowerEroder, StreamPowerSmoothThresholdEroder,
               FastscapeEroder, SedDepEroder,
               PrecipitationDistribution,
@@ -49,6 +50,7 @@ COMPONENTS = [ChiFinder, LinearDiffuser,
               CubicNonLinearDiffuser, DepthSlopeProductErosion,
               FlowDirectorD8, FlowDirectorSteepest, FlowDirectorMFD,
               FlowDirectorDINF, FlowAccumulator, Space, ErosionDeposition,
-              LandslideProbability, DepthDependentCubicDiffuser]
+              LandslideProbability, DepthDependentCubicDiffuser,
+              PresFlowNetwork]
 
 __all__ = [cls.__name__ for cls in COMPONENTS]
