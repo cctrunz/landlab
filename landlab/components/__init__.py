@@ -33,6 +33,7 @@ from .erosion_deposition import ErosionDeposition
 from .space import Space
 from .landslides import LandslideProbability
 from .conduit_networks import PresFlowNetwork
+from .conduit_networks import MeltCreep
 
 COMPONENTS = [ChiFinder, LinearDiffuser,
               Flexure, FlowRouter, DepressionFinderAndRouter,
@@ -51,6 +52,6 @@ COMPONENTS = [ChiFinder, LinearDiffuser,
               FlowDirectorD8, FlowDirectorSteepest, FlowDirectorMFD,
               FlowDirectorDINF, FlowAccumulator, Space, ErosionDeposition,
               LandslideProbability, DepthDependentCubicDiffuser,
-              PresFlowNetwork]
+              PresFlowNetwork, MeltCreep]
 
 __all__ = [cls.__name__ for cls in COMPONENTS]
