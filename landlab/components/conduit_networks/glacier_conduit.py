@@ -148,4 +148,8 @@ class MeltCreep(Component):
         self.link_head = map_mean_of_link_nodes_to_link(self.grid, 'hydraulic__head')
         self.calc_melt()
         self.calc_creep()
-        self.d_h = self.d_h + (self.melt - self.creep)*self.dt
+#        print "melt = ", self.melt
+#        print "creep = ", self.creep
+        ddh = (self.melt - self.creep)*self.dt
+#        print "mean ddh = ", ddh.mean()
+        self.d_h[self._grid.active_links] += ddh[self._grid.active_links]
