@@ -27,6 +27,7 @@ class PresFlowNetwork(Component):
     _input_var_names = (
         'junction__elevation',
         'hydraulic__diameter',
+        'input__discharge',
     )
 
     _output_var_names = (
@@ -42,7 +43,8 @@ class PresFlowNetwork(Component):
         'resistance__factor':'(s/m2)^head_loss__exponent',
         'head_loss__exponent':'unitless',
         'hydraulic__head':'m',
-        'conduit__discharge':'m3/s'
+        'conduit__discharge':'m3/s',
+        'input__discharge':'m3/s',
     }
 
     _var_mapping = {
@@ -51,6 +53,7 @@ class PresFlowNetwork(Component):
         'resistance__factor':'link',
         'hydraulic__head':'node',
         'conduit__discharge':'link',
+        'input__discharge':'node',
     }
 
     _var_doc = {
@@ -66,6 +69,8 @@ class PresFlowNetwork(Component):
             'elevation head at node',
         'conduit__discharge':
             'flow discharge through conduit in direction of link',
+        'input__discharge':
+            'flow discharge that is added at nodes (positive is inflow)',
     }
 
     def __init__(self, grid, flow_eqn='Darcy-Weisbach',
@@ -79,7 +84,6 @@ class PresFlowNetwork(Component):
             Landlab ModelGrid object
         flow_eqn : str, optional (defaults to 'Darcy-Weisbach')
             Flow equation to be used in conduits.
-
         """
         self._grid = grid
         self._bc_set_code = self.grid.bc_set_code
@@ -104,6 +108,11 @@ class PresFlowNetwork(Component):
         else:
             raise FieldError(
                 'Hydraulic diameters of conduits are required as a component input!')
+        if 'input__discharge' in grid.at_node:
+            self.input__discharge = grid.at_node['input__discharge']
+        else:
+            raise FieldError(
+                'Node input discharges are required as a component input!')
         if 'resistance__factor' in grid.at_link:
             self.r = grid.at_link['resistance__factor']
         else:
@@ -155,6 +164,8 @@ class PresFlowNetwork(Component):
         while tol>max_tol:
             Q_ij = self.Q[links][self.grid.core_nodes]*self.grid.active_link_dirs_at_node[self.grid.core_nodes]
             F = np.sum(Q_ij*(1. - 1./a[links][self.grid.core_nodes] ), axis=1)
+            #Add recharge to nodes
+            F += self.grid.at_node['input__discharge'][self.grid.core_nodes]
             A_ij = np.zeros([n_core, n_core])
             for i, this_node in enumerate(self.grid.core_nodes):
                 #calculate diagonal term in A matrix

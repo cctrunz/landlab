@@ -123,14 +123,14 @@ class MeltCreep(Component):
         """
         Calculate ice melt within conduits
         """
-        L = self.grid.length_of_link
+        L = self._grid.length_of_link
         f = self.f
         g = self.g
         d_h = self.d_h
         r_s = self.shape_factor
         #Can make this more general later
         #Calculate melt
-        self.melt = 16.*self.rho_w*f/(np.pi**3.*self.rho_ice*self.L_v)*self.Q**3./d_h**6.
+        self.melt = 16.*self.rho_w*f/(np.pi**3.*self.rho_ice*self.L_v)*abs(self._grid.at_link['conduit__discharge'])**3./d_h**6.
 
     def calc_creep(self):
         dP = self.g*(self.rho_ice*self.link_ice_thickness - self.rho_w*self.link_head)
@@ -141,15 +141,15 @@ class MeltCreep(Component):
         Calculate and set head loss exponent.
         """
         if self.flow_eqn == 'Darcy-Weisbach':
-            self.a = 2.0*np.ones(self.grid.number_of_links)
+            self.a = 2.0*np.ones(self._grid.number_of_links)
 
     def run_one_step(self, **kwds):
         #Calculate mean heads in links
-        self.link_head = map_mean_of_link_nodes_to_link(self.grid, 'hydraulic__head')
+        self.link_head = map_mean_of_link_nodes_to_link(self._grid, 'hydraulic__head')
         self.calc_melt()
         self.calc_creep()
 #        print "melt = ", self.melt
 #        print "creep = ", self.creep
         ddh = (self.melt - self.creep)*self.dt
-#        print "mean ddh = ", ddh.mean()
+        print "mean ddh = ", ddh[self._grid.active_links].mean()
         self.d_h[self._grid.active_links] += ddh[self._grid.active_links]
