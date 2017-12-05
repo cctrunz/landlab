@@ -133,7 +133,7 @@ class MeltCreep(Component):
         self.melt = 16.*self.rho_w*f/(np.pi**3.*self.rho_ice*self.L_v)*abs(self._grid.at_link['conduit__discharge'])**3./d_h**6.
 
     def calc_creep(self):
-        dP = self.g*(self.rho_ice*self.link_ice_thickness - self.rho_w*self.link_head)
+        dP = self.g*(self.rho_ice*self.link_ice_thickness - self.rho_w*(self.link_head - self.link_elevation))
         self.creep = (1./(self.n*self.B))**3. * self.d_h*dP*np.fabs(dP**(self.n - 1.))
 
     def calc_a(self):
@@ -146,6 +146,7 @@ class MeltCreep(Component):
     def run_one_step(self, **kwds):
         #Calculate mean heads in links
         self.link_head = map_mean_of_link_nodes_to_link(self._grid, 'hydraulic__head')
+        self.link_elevation = map_mean_of_link_nodes_to_link(self._grid, 'junction__elevation')
         self.calc_melt()
         self.calc_creep()
 #        print "melt = ", self.melt
