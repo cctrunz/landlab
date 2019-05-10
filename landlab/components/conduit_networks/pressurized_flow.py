@@ -2,6 +2,7 @@ from landlab import Component, FieldError
 import numpy as np
 from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
+from scipy.optimize import fsolve
 
 class PresFlowNetwork(Component):
     """
@@ -150,9 +151,32 @@ class PresFlowNetwork(Component):
         if self.flow_eqn == 'Darcy-Weisbach':
             self.a = 2.0*np.ones(self.grid.number_of_links)
 
+######################
+#### Begin attempt to incorporate direct residual solver (not working yet)
+##############
+
+    def network_residuals(self,heads):
+        a = self.a
+        r = self.r
+        self.h[self.grid.core_nodes] = heads
+        dh = self.grid.length_of_link * self.grid.calc_grad_at_link(self.h)
+        self.Q = np.sign(dh)*(np.fabs(dh)/r)**(1./a)
+        return self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
+
+
+    def run_one_step_fsolve(self, **kwds):
+        self.calc_a()
+        self.calc_r()
+        self.h[self.grid.core_nodes] = fsolve(self.network_residuals, self.h[self.grid.core_nodes])
+
+######################
+#### End attempt to incorporate direct residual solver (not working yet)
+##############
+
+
     def run_one_step(self, **kwds):
         #Calculate flow in network
-        max_tol = 0.001
+        max_tol = 1e-5#0.001
         tol = 1.
         niter = 1
         links = self.grid.links_at_node
@@ -199,6 +223,10 @@ class PresFlowNetwork(Component):
             self.h[self.grid.core_nodes] = spsolve(A_csr,F)
             dQ= -(1./a[self.grid.active_links])*self.Q[self.grid.active_links] - 1./(a[self.grid.active_links]*r[self.grid.active_links]*np.fabs(self.Q[self.grid.active_links])**(a[self.grid.active_links]-1)) * (self.grid.calc_diff_at_link(self.h)[self.grid.active_links])
             self.Q[self.grid.active_links] +=  dQ
-            tol = sum(np.fabs(dQ))/sum(np.fabs(self.Q[self.grid.active_links]))
-            print "Number of iterations =", niter, "tolerance =", tol
+            #tol = sum(np.fabs(dQ))/sum(np.fabs(self.Q[self.grid.active_links]))
+            #Trying a different tolerance criteria, previous may not work for big grids
+            #tol = np.mean(np.fabs(dQ/self.Q[self.grid.active_links]))
+            #max_change = np.max(np.fabs(dQ/self.Q[self.grid.active_links]))
+            tol = np.max(dQ)
+            print "Number of iterations =", niter, "tolerance =", tol #,"max_change=",max_change, " max_dQ=",max_dQ
             niter += 1
