@@ -152,5 +152,5 @@ class MeltCreep(Component):
 #        print "melt = ", self.melt
 #        print "creep = ", self.creep
         ddh = (self.melt - self.creep)*self.dt
-        print "mean ddh = ", ddh[self._grid.active_links].mean()
+        print("mean ddh = ", ddh[self._grid.active_links].mean())
         self.d_h[self._grid.active_links] += ddh[self._grid.active_links]
