@@ -66,7 +66,7 @@ class MeltCreep(Component):
 
     def __init__(self, grid, shape_factor=np.pi, g=9.81, f=0.1,
                 rho_w=998., rho_ice=900.,L_v=334000., n=3., B=58000000.,
-                dt = 3600., **kwds):
+                dt = 3600., min_d_h=1e-5, **kwds):
 
         """
         Initialize the MeltCreep
@@ -90,6 +90,7 @@ class MeltCreep(Component):
         self.n = n
         self.B = B
         self.dt = dt
+        self.min_d_h = min_d_h
         ##Create fields
         if 'junction__elevation' in grid.at_node:
             self.junc_elev = grid.at_node['junction__elevation']
@@ -152,5 +153,6 @@ class MeltCreep(Component):
 #        print "melt = ", self.melt
 #        print "creep = ", self.creep
         ddh = (self.melt - self.creep)*self.dt
-        print("mean ddh = ", ddh[self._grid.active_links].mean())
+        print("max ddh = ", ddh[self._grid.active_links].max())
         self.d_h[self._grid.active_links] += ddh[self._grid.active_links]
+        self.d_h[self.d_h<self.min_d_h] = self.min_d_h #set minimum hydraulic diameter (don't allow negative)
