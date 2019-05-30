@@ -228,5 +228,5 @@ class PresFlowNetwork(Component):
             #tol = np.mean(np.fabs(dQ/self.Q[self.grid.active_links]))
             #max_change = np.max(np.fabs(dQ/self.Q[self.grid.active_links]))
             tol = np.max(dQ)
-            print("Number of iterations =", niter, "tolerance =", tol) #,"max_change=",max_change, " max_dQ=",max_dQ
+            print "Number of iterations =", niter, "tolerance =", tol #,"max_change=",max_change, " max_dQ=",max_dQ
             niter += 1

@@ -149,8 +149,8 @@ class MeltCreep(Component):
         self.link_elevation = map_mean_of_link_nodes_to_link(self._grid, 'junction__elevation')
         self.calc_melt()
         self.calc_creep()
-#        print("melt = ", self.melt)
-#        print("creep = ", self.creep)
+#        print "melt = ", self.melt
+#        print "creep = ", self.creep
         ddh = (self.melt - self.creep)*self.dt
-        print(["mean ddh = ", ddh[self._grid.active_links].mean()])
+        print "mean ddh = ", ddh[self._grid.active_links].mean()
         self.d_h[self._grid.active_links] += ddh[self._grid.active_links]
