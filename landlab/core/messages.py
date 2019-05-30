@@ -92,11 +92,64 @@ AssertionError
 from __future__ import print_function
 
 import os
+import re
 import sys
 import textwrap
-import re
 
 import six
+
+
+def indent_and_wrap(content, indent=""):
+    """Indent and wrap some text
+
+    Lines are first dedented to remove common leading whitespace,
+    then indented according to the value of *indent*, and then
+    wrapped at 70 characters (indenting if necessary with subsequent
+    indent being twice *indent*).
+
+    Note that when looking for common whitespace, the first line is
+    ignored.
+
+    Parameters
+    ----------
+    content : str
+        The content to wrap.
+
+    Returns
+    -------
+    str
+        The content properly wrapped and indented.
+
+    Examples
+    --------
+    >>> from __future__ import print_function
+    >>> from landlab.core.messages import indent_and_wrap
+    >>> content = '''@book{knuth1998art,
+    ...     title={The art of computer programming: sorting and searching},
+    ...     author={Knuth, Donald Ervin},
+    ...     volume={3},
+    ...     year={1998},
+    ...     publisher={Pearson Education}
+    ...     }'''
+    >>> print(indent_and_wrap(content))
+    @book{knuth1998art,
+    title={The art of computer programming: sorting and searching},
+    author={Knuth, Donald Ervin},
+    volume={3},
+    year={1998},
+    publisher={Pearson Education}
+    }
+    """
+    wrapper = textwrap.TextWrapper(initial_indent=indent, subsequent_indent=2 * indent)
+    lines = content.splitlines()
+    first_line, the_rest = [lines[0].strip()], lines[1:]
+    if the_rest:
+        the_rest = textwrap.dedent(os.linesep.join(the_rest)).splitlines()
+    if first_line[0]:
+        lines = first_line + the_rest
+    else:
+        lines = the_rest
+    return os.linesep.join([os.linesep.join(wrapper.wrap(line)) for line in lines])
 
 
 def split_paragraphs(msg, linesep=os.linesep):
@@ -112,7 +165,7 @@ def split_paragraphs(msg, linesep=os.linesep):
         Text to split into paragraphs.
     linesep : str, optional
         Line separator used in the message string.
-    
+
     Returns
     -------
     list of str
@@ -137,7 +190,7 @@ def split_paragraphs(msg, linesep=os.linesep):
     >>> len(split_paragraphs(text, linesep='\\n'))
     1
     """
-    pattern = linesep + '\s*' + linesep
+    pattern = linesep + r"\s*" + linesep
     parsep = linesep * 2
     return re.sub(pattern, parsep, msg.strip()).split(parsep)
 
@@ -200,7 +253,8 @@ def format_message(msg, header=None, footer=None, linesep=os.linesep):
     if msg is not None:
         for paragraph in split_paragraphs(msg.strip(), linesep=linesep):
             paragraphs.append(
-                os.linesep.join(textwrap.wrap(textwrap.dedent(paragraph))))
+                os.linesep.join(textwrap.wrap(textwrap.dedent(paragraph)))
+            )
     paragraphs += footer
 
     return (os.linesep * 2).join(paragraphs)
@@ -229,9 +283,7 @@ def warning_message(msg=None, **kwds):
     <BLANKLINE>
     Dictumst vestibulum rhoncus est pellentesque.
     """
-    return format_message(msg,
-                          header=os.linesep.join(['WARNING', '=======']),
-                          **kwds)
+    return format_message(msg, header=os.linesep.join(["WARNING", "======="]), **kwds)
 
 
 def error_message(msg=None, **kwds):
@@ -257,12 +309,10 @@ def error_message(msg=None, **kwds):
     <BLANKLINE>
     Dictumst vestibulum rhoncus est pellentesque.
     """
-    return format_message(msg,
-                          header=os.linesep.join(['ERROR', '=====']),
-                          **kwds)
+    return format_message(msg, header=os.linesep.join(["ERROR", "====="]), **kwds)
 
 
-def assert_or_print(cond, msg=None, onerror='raise', file=sys.stdout):
+def assert_or_print(cond, msg=None, onerror="raise", file=sys.stdout):
     """Make an assertion printing a message if it fails.
 
     Specify an action to take if an assertion fails, depending on
@@ -300,14 +350,14 @@ def assert_or_print(cond, msg=None, onerror='raise', file=sys.stdout):
     ...
     AssertionError
     """
-    if onerror not in ('pass', 'warn', 'raise'):
+    if onerror not in ("pass", "warn", "raise"):
         raise ValueError("onerror must be one of 'pass', 'warn', or 'raise'")
 
     try:
-        assert(cond)
+        assert cond
     except AssertionError:
-        if onerror == 'warn':
-            print(warning_message(msg), file=file, end='')
-        elif onerror == 'raise':
-            print(error_message(msg), file=file, end='')
+        if onerror == "warn":
+            print(warning_message(msg), file=file, end="")
+        elif onerror == "raise":
+            print(error_message(msg), file=file, end="")
             raise
