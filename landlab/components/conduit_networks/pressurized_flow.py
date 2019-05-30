@@ -21,6 +21,14 @@ class PresFlowNetwork(Component):
         A Landlab grid object.
 
     [add later]
+    
+    Notes
+    -----
+    Solver uses Newton-Raphson Global Algorithm from:
+    
+    Todini and Rossmann (2013), Unified Framework for Deriving Siultaneous Equation Algorithms for Water Distribution Networks, Journal of Hydraulic Engineering, 139, 5, 511-526.
+    
+    
 
     """
     _name = 'PresFlowNetwork'
@@ -190,17 +198,17 @@ class PresFlowNetwork(Component):
             F = np.sum(Q_ij*(1. - 1./a[links][self.grid.core_nodes] ), axis=1)
             #Add recharge to nodes
             F += self.grid.at_node['input__discharge'][self.grid.core_nodes]
-            A_ij = np.zeros([n_core, n_core])
+            ADA_ij = np.zeros([n_core, n_core])
             for i, this_node in enumerate(self.grid.core_nodes):
-                #calculate diagonal term in A matrix
+                #calculate diagonal terms in the matrix A_{21} (D_{11})^{-1} A_{12}
                 node_Qs = Q_ij[i]
                 node_as = a[links][self.grid.core_nodes][i]
                 node_rs = r[links][self.grid.core_nodes][i]
-                A_ii = 0.
+                ADA_ii = 0.
                 for link_idx, link_Q in enumerate(node_Qs):
                     if link_Q != 0:
-                        A_ii += 1./(node_as[link_idx]*node_rs[link_idx]*np.fabs(link_Q)**(node_as[link_idx]-1.))
-                A_ij[i][i] = A_ii
+                        ADA_ii += 1./(node_as[link_idx]*node_rs[link_idx]*np.fabs(link_Q)**(node_as[link_idx]-1.))
+                ADA_ij[i][i] = ADA_ii
                 #loop through node links to calculate off-diagonal terms in A
                 for this_link in links[this_node]:
                     if this_link >= 0:#Ignore -1 cases, which indicate no link
@@ -213,14 +221,16 @@ class PresFlowNetwork(Component):
                         if not self.grid.node_is_boundary(neighbor_node):
                             #Get proper j index for Array (neighbor core node number)
                             j = np.where(self.grid.core_nodes==neighbor_node)[0][0]
-                            A_ij[i][j] = -1./(a[this_link]*r[this_link]*np.fabs(self.Q[this_link])**(a[this_link]-1))
+                            ADA_ij[i][j] = -1./(a[this_link]*r[this_link]*np.fabs(self.Q[this_link])**(a[this_link]-1))
                         else:#if boundary add term to F
                             if self.Q[this_link]!=0:#Check whether this is a closed boundary
                                 F[i] += 1./(a[this_link]*r[this_link]*np.fabs(self.Q[this_link])**(a[this_link]-1))*self.h[neighbor_node]
             #Turn A into sparse matrix
-            A_csr = csr_matrix(A_ij)
+            A_csr = csr_matrix(ADA_ij)
             ##Solve linear system for new approximation of heads
+            # ADA_ij H = F
             self.h[self.grid.core_nodes] = spsolve(A_csr,F)
+            #Evaluate scalar equations to update discharge
             dQ= -(1./a[self.grid.active_links])*self.Q[self.grid.active_links] - 1./(a[self.grid.active_links]*r[self.grid.active_links]*np.fabs(self.Q[self.grid.active_links])**(a[self.grid.active_links]-1)) * (self.grid.calc_diff_at_link(self.h)[self.grid.active_links])
             self.Q[self.grid.active_links] +=  dQ
             #tol = sum(np.fabs(dQ))/sum(np.fabs(self.Q[self.grid.active_links]))
