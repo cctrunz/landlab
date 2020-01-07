@@ -1,5 +1,5 @@
 #! /usr/env/python
-""" Simple raster Landlab cellular automaton.
+"""Simple raster Landlab cellular automaton.
 
 Simple raster Landlab cellular automaton, with
 cell-pair transitions that depend on orientation (vertical or horizontal)
@@ -11,7 +11,7 @@ stochastic, pair-based CA.
 
 Created GT Sep 2014
 """
-from __future__ import print_function
+
 
 import numpy as np
 
@@ -42,6 +42,8 @@ class OrientedRasterCTS(CellLabCTSModel):
     prop_reset_value : number or object, optional
         Default or initial value for a node/cell property (e.g., 0.0).
         Must be same type as *prop_data*.
+    seed : int (default 0)
+        Seed for random number generator
 
     Examples
     --------
@@ -49,7 +51,7 @@ class OrientedRasterCTS(CellLabCTSModel):
     >>> from landlab.ca.celllab_cts import Transition
     >>> from landlab.ca.oriented_raster_cts import OrientedRasterCTS
 
-    >>> mg = RasterModelGrid(3, 4)
+    >>> mg = RasterModelGrid((3, 4))
     >>> nsd = {0 : 'yes', 1 : 'no'}
     >>> xnlist = []
     >>> xnlist.append(Transition((0,1,0), (1,1,0), 1.0, 'frogging'))
@@ -65,9 +67,9 @@ class OrientedRasterCTS(CellLabCTSModel):
         initial_node_states,
         prop_data=None,
         prop_reset_value=None,
+        seed=0,
     ):
-        """
-        RasterCTS constructor: sets number of orientations to 2 and calls
+        """RasterCTS constructor: sets number of orientations to 2 and calls
         base-class constructor.
 
         Parameters
@@ -105,12 +107,12 @@ class OrientedRasterCTS(CellLabCTSModel):
             initial_node_states,
             prop_data,
             prop_reset_value,
+            seed,
         )
 
     def setup_array_of_orientation_codes(self):
-        """
-        Creates and configures an array that contain the orientation code for
-        each active link (and corresponding cell pair).
+        """Creates and configures an array that contain the orientation code
+        for each active link (and corresponding cell pair).
 
         Notes
         -----

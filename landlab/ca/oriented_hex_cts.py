@@ -1,5 +1,5 @@
 #! /usr/env/python
-"""Simple hexagonal Landlab cellular automaton
+"""Simple hexagonal Landlab cellular automaton.
 
 This file defines the OrientedHexCTS class, which is a sub-class of
 CellLabCTSModel that implements a simple, non-oriented, hex-grid
@@ -39,6 +39,8 @@ class OrientedHexCTS(CellLabCTSModel):
     prop_reset_value : number or object, optional
         Default or initial value for a node/cell property (e.g., 0.0).
         Must be same type as *prop_data*.
+    seed : int (default 0)
+        Seed for random number generator
 
     Examples
     --------
@@ -46,7 +48,7 @@ class OrientedHexCTS(CellLabCTSModel):
     >>> from landlab.ca.oriented_hex_cts import OrientedHexCTS
     >>> from landlab.ca.celllab_cts import Transition
 
-    >>> mg = HexModelGrid(4, 3, 1.0)
+    >>> mg = HexModelGrid((4, 3), spacing=1.0)
     >>> nsd = {0 : 'yes', 1 : 'no'}
     >>> xnlist = []
     >>> xnlist.append(Transition((0,1,0), (1,1,0), 1.0, 'frogging'))
@@ -62,6 +64,7 @@ class OrientedHexCTS(CellLabCTSModel):
         initial_node_states,
         prop_data=None,
         prop_reset_value=None,
+        seed=0,
     ):
         """Initialize a OrientedHexCTS.
 
@@ -90,11 +93,6 @@ class OrientedHexCTS(CellLabCTSModel):
         if not isinstance(model_grid, HexModelGrid):
             raise TypeError("model_grid must be a Landlab HexModelGrid")
 
-        # Somehow test to make sure the grid links have been re-oriented to
-        # point up/right (-45 to +135 degrees clockwise relative to vertical).
-        # Such orientation is ensured when the argument reorient_grid=True is
-        # passed to the hex grid constructor.
-
         # Define the number of distinct cell-pair orientations: here 3,
         # representing
         self.number_of_orientations = 3
@@ -108,12 +106,12 @@ class OrientedHexCTS(CellLabCTSModel):
             initial_node_states,
             prop_data,
             prop_reset_value,
+            seed,
         )
 
     def setup_array_of_orientation_codes(self):
-        """
-        Creates and configures an array that contain the orientation code for
-        each active link (and corresponding cell pair).
+        """Creates and configures an array that contain the orientation code
+        for each active link (and corresponding cell pair).
 
         Notes
         -----

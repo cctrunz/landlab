@@ -1,7 +1,7 @@
 import numpy as np
 
 from ...core.utils import as_id_array
-from ..base import CORE_NODE, FIXED_GRADIENT_BOUNDARY, FIXED_VALUE_BOUNDARY
+from ..nodestatus import NodeStatus
 from ..unstructured.links import LinkGrid
 from . import nodes
 
@@ -683,15 +683,21 @@ def is_active_link(shape, node_status):
     status_at_link_end = node_status.flat[node_id_at_link_end(shape)]
 
     return (
-        ((status_at_link_start == CORE_NODE) & (status_at_link_end == CORE_NODE))
-        | ((status_at_link_end == CORE_NODE) & (status_at_link_start == CORE_NODE))
-        | (
-            (status_at_link_end == CORE_NODE)
-            & (status_at_link_start == FIXED_VALUE_BOUNDARY)
+        (
+            (status_at_link_start == NodeStatus.CORE)
+            & (status_at_link_end == NodeStatus.CORE)
         )
         | (
-            (status_at_link_end == FIXED_VALUE_BOUNDARY)
-            & (status_at_link_start == CORE_NODE)
+            (status_at_link_end == NodeStatus.CORE)
+            & (status_at_link_start == NodeStatus.CORE)
+        )
+        | (
+            (status_at_link_end == NodeStatus.CORE)
+            & (status_at_link_start == NodeStatus.FIXED_VALUE)
+        )
+        | (
+            (status_at_link_end == NodeStatus.FIXED_VALUE)
+            & (status_at_link_start == NodeStatus.CORE)
         )
     )
 
@@ -748,7 +754,7 @@ def is_fixed_link(shape, node_status):
 
     Examples
     --------
-    >>> from landlab import RasterModelGrid
+    >>> from landlab import NodeStatus, RasterModelGrid
     >>> from landlab.grid.structured_quad.links import is_fixed_link
     >>> import numpy as np
 
@@ -758,7 +764,7 @@ def is_fixed_link(shape, node_status):
     >>> rmg.at_node['topographic__elevation'] = z
     >>> rmg.at_link['topographic__slope'] = s
 
-    >>> rmg.set_fixed_link_boundaries_at_grid_edges(True, True, True, True)
+    >>> rmg.status_at_node[rmg.perimeter_nodes] = NodeStatus.FIXED_GRADIENT
     >>> rmg.status_at_node # doctest: +NORMALIZE_WHITESPACE
     array([2, 2, 2, 2, 2,
            2, 0, 0, 0, 2,
@@ -781,11 +787,11 @@ def is_fixed_link(shape, node_status):
     status_at_link_end = node_status.flat[node_id_at_link_end(shape)]
 
     return (
-        (status_at_link_start == CORE_NODE)
-        & (status_at_link_end == FIXED_GRADIENT_BOUNDARY)
+        (status_at_link_start == NodeStatus.CORE)
+        & (status_at_link_end == NodeStatus.FIXED_GRADIENT)
     ) | (
-        (status_at_link_end == CORE_NODE)
-        & (status_at_link_start == FIXED_GRADIENT_BOUNDARY)
+        (status_at_link_end == NodeStatus.CORE)
+        & (status_at_link_start == NodeStatus.FIXED_GRADIENT)
     )
 
 
@@ -807,15 +813,15 @@ def fixed_link_ids(shape, node_status):
     Examples
     --------
 
-    >>> from landlab import RasterModelGrid
+    >>> from landlab import NodeStatus, RasterModelGrid
     >>> from landlab.grid.structured_quad.links import fixed_link_ids
     >>> import numpy as np
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> z = np.arange(0, rmg.number_of_nodes)
     >>> s = np.arange(0, rmg.number_of_links)
     >>> rmg.at_node['topographic__elevation'] = z
     >>> rmg.at_link['topographic__slope'] = s
-    >>> rmg.set_fixed_link_boundaries_at_grid_edges(True, True, True, True)
+    >>> rmg.status_at_node[rmg.perimeter_nodes] = NodeStatus.FIXED_GRADIENT
     >>> rmg.status_at_node # doctest: +NORMALIZE_WHITESPACE
     array([2, 2, 2, 2, 2,
            2, 0, 0, 0, 2,
@@ -866,22 +872,22 @@ def horizontal_active_link_ids(shape, active_ids, bad_index_value=-1):
 
     .. note::
 
-        ``*`` indicates the nodes that are set to :any:`CLOSED_BOUNDARY`
+        ``*`` indicates the nodes that are set to `NodeStatus.CLOSED`
 
-        ``o`` indicates the nodes that are set to :any:`CORE_NODE`
+        ``o`` indicates the nodes that are set to `NodeStatus.CORE`
 
-        ``I`` indicates the links that are set to :any:`INACTIVE_LINK`
+        ``I`` indicates the links that are set to `LinkStatus.INACTIVE`
 
         ``V`` indicates vertical active ids, which are ignored by this
         function.
 
-        Numeric values correspond to the horizontal :any:`ACTIVE_LINK`  ID.
+        Numeric values correspond to the horizontal `LinkStatus.ACTIVE`  ID.
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (active_link_ids,
     ...     horizontal_active_link_ids)
 
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> rmg.set_closed_boundaries_at_grid_edges(True, True, True, True)
 
     >>> status = rmg.status_at_node
@@ -944,31 +950,31 @@ def horizontal_fixed_link_ids(shape, fixed_ids, bad_index_value=-1):
 
     .. note::
 
-        ``*`` indicates the nodes that are set to :any:`FIXED_VALUE_BOUNDARY`
+        ``*`` indicates the nodes that are set to `NodeStatus.FIXED_VALUE`
 
-        ``o`` indicates the nodes that are set to :any:`CORE_NODE`
+        ``o`` indicates the nodes that are set to `NodeStatus.CORE`
 
-        ``I`` indicates the links that are set to :any:`INACTIVE_LINK`
+        ``I`` indicates the links that are set to `LinkStatus.INACTIVE`
 
         ``V`` indicates vertical ids, which are ignored by this function
 
-        ``H`` indicates horizontal :any:`ACTIVE_LINK` ids, which are ignored by
+        ``H`` indicates horizontal `LinkStatus.ACTIVE` ids, which are ignored by
         this function
 
-        Numeric values correspond to the horizontal :any:`FIXED_LINK` ID.
+        Numeric values correspond to the horizontal `LinkStatus.FIXED` ID.
 
-    >>> from landlab import RasterModelGrid
+    >>> from landlab import NodeStatus, RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (fixed_link_ids,
     ...     horizontal_fixed_link_ids)
     >>> import numpy
 
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> rmg.at_node['topographic__elevation'] = numpy.arange(
     ...     0, rmg.number_of_nodes)
     >>> rmg.at_link['topographic__slope'] = numpy.arange(
     ...     0, rmg.number_of_links)
 
-    >>> rmg.set_fixed_link_boundaries_at_grid_edges(True, True, True, True)
+    >>> rmg.status_at_node[rmg.perimeter_nodes] = NodeStatus.FIXED_GRADIENT
     >>> status = rmg.status_at_node
     >>> status # doctest: +NORMALIZE_WHITESPACE
     array([2, 2, 2, 2, 2,
@@ -1181,16 +1187,16 @@ def vertical_active_link_ids(shape, active_ids, bad_index_value=-1):
 
     .. note::
 
-        ``*`` indicates the nodes that are set to :any:`CLOSED_BOUNDARY`
+        ``*`` indicates the nodes that are set to `NodeStatus.CLOSED`
 
-        ``o`` indicates the nodes that are set to :any:`CORE_NODE`
+        ``o`` indicates the nodes that are set to `NodeStatus.CORE`
 
-        ``I`` indicates the links that are set to :any:`INACTIVE_LINK`
+        ``I`` indicates the links that are set to `LinkStatus.INACTIVE`
 
         ``H`` indicates horizontal active ids, which are ignored by this
         function
 
-        Numeric values correspond to the vertical :any:`ACTIVE_LINK` IDs.
+        Numeric values correspond to the vertical `LinkStatus.ACTIVE` IDs.
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (active_link_ids,
@@ -1266,11 +1272,11 @@ def vertical_fixed_link_ids(shape, fixed_ids, bad_index_value=-1):
     .. note::
 
         ``*`` indicates the nodes that are set to
-        :any:`FIXED_GRADIENT_BOUNDARY`
+        `NodeStatus.FIXED_GRADIENT`
 
-        ``o`` indicates the nodes that are set to :any:`CORE_NODE`
+        ``o`` indicates the nodes that are set to `NodeStatus.CORE`
 
-        ``I`` indicates the links that are set to :any:`INACTIVE_LINK`
+        ``I`` indicates the links that are set to `LinkStatus.INACTIVE`
 
         ``H`` indicates horizontal active and fixed links, which are ignored by
         this function.
@@ -1278,9 +1284,9 @@ def vertical_fixed_link_ids(shape, fixed_ids, bad_index_value=-1):
         ``V`` indicates vertical active ids, which are ignored by this
         function.
 
-        Numeric values correspond to the vertical :any:`FIXED_LINK` IDs.
+        Numeric values correspond to the vertical `LinkStatus.FIXED` IDs.
 
-    >>> from landlab import RasterModelGrid
+    >>> from landlab import NodeStatus, RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (fixed_link_ids,
     ...     vertical_fixed_link_ids)
     >>> import numpy
@@ -1290,7 +1296,7 @@ def vertical_fixed_link_ids(shape, fixed_ids, bad_index_value=-1):
     ...     0, rmg.number_of_nodes)
     >>> rmg.at_link['topographic__slope'] = numpy.arange(
     ...     0, rmg.number_of_links)
-    >>> rmg.set_fixed_link_boundaries_at_grid_edges(True, True, True, True)
+    >>> rmg.status_at_node[rmg.perimeter_nodes] = NodeStatus.FIXED_GRADIENT
 
     >>> status = rmg.status_at_node
     >>> status # doctest: +NORMALIZE_WHITESPACE
@@ -1360,7 +1366,7 @@ def horizontal_south_link_neighbor(shape, horizontal_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> horizontal_links = horizontal_link_ids(rmg.shape).flatten()
     >>> horizontal_south_link_neighbor(rmg.shape, horizontal_links)
     array([-1, -1, -1, -1,  0,  1,  2,  3,  9, 10, 11, 12, 18, 19, 20, 21])
@@ -1440,7 +1446,7 @@ def horizontal_west_link_neighbor(shape, horizontal_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> horizontal_links = horizontal_link_ids(rmg.shape).flatten()
     >>> horizontal_west_link_neighbor(rmg.shape, horizontal_links)
     array([-1,  0,  1,  2, -1,  9, 10, 11, -1, 18, 19, 20, -1, 27, 28, 29])
@@ -1520,11 +1526,11 @@ def horizontal_north_link_neighbor(shape, horizontal_ids, bad_index_value=-1):
 
         ``*`` indicates nodes
 
-        Numeric values correspond to the horizontal :any:`ACTIVE_LINK` IDs.
+        Numeric values correspond to the horizontal `LinkStatus.ACTIVE` IDs.
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> horizontal_links = horizontal_link_ids(rmg.shape).flatten()
     >>> horizontal_north_link_neighbor(rmg.shape, horizontal_links)
     array([ 9, 10, 11, 12, 18, 19, 20, 21, 27, 28, 29, 30, -1, -1, -1, -1])
@@ -1602,11 +1608,11 @@ def horizontal_east_link_neighbor(shape, horizontal_ids, bad_index_value=-1):
 
         ``*`` indicates nodes
 
-        Numeric values correspond to the horizontal :any:`ACTIVE_LINK` IDs.
+        Numeric values correspond to the horizontal `LinkStatus.ACTIVE` IDs.
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> horizontal_links = horizontal_link_ids(rmg.shape).flatten()
     >>> horizontal_east_link_neighbor(rmg.shape, horizontal_links)
     array([ 1,  2,  3, -1, 10, 11, 12, -1, 19, 20, 21, -1, 28, 29, 30, -1])
@@ -1690,7 +1696,7 @@ def d4_horizontal_link_neighbors(shape, horizontal_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> horizontal_links = horizontal_link_ids(rmg.shape).flatten()
     >>> d4_horizontal_link_neighbors(rmg.shape, horizontal_links)
     array([[ 1,  9, -1, -1],
@@ -1778,7 +1784,7 @@ def d4_horizontal_active_link_neighbors(shape, horizontal_ids, bad_index_value=-
 
         ``*`` indicates nodes
 
-        Numeric values correspond to the horizontal :any:`ACTIVE_LINK` IDs.
+        Numeric values correspond to the horizontal `LinkStatus.ACTIVE` IDs.
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
@@ -1939,7 +1945,7 @@ def vertical_west_link_neighbor(shape, vertical_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> vertical_links = vertical_link_ids(rmg.shape)
     >>> vertical_west_link_neighbor(rmg.shape, vertical_links)
     ...     # doctest: +NORMALIZE_WHITESPACE
@@ -2026,7 +2032,7 @@ def vertical_north_link_neighbor(shape, vertical_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> vertical_ids = vertical_link_ids(rmg.shape)
     >>> vertical_north_link_neighbor(rmg.shape, vertical_ids)
     ...     # doctest: +NORMALIZE_WHITESPACE
@@ -2111,7 +2117,7 @@ def vertical_east_link_neighbor(shape, vertical_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> vertical_links = vertical_link_ids(rmg.shape)
     >>> vertical_east_link_neighbor(rmg.shape, vertical_links)
     ...     # doctest: +NORMALIZE_WHITESPACE
@@ -2197,7 +2203,7 @@ def d4_vertical_link_neighbors(shape, vertical_ids, bad_index_value=-1):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import *
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> vertical_ids = vertical_link_ids(rmg.shape)
     >>> d4_vertical_link_neighbors(rmg.shape, vertical_ids)
     array([[ 5, 13, -1, -1],
@@ -2273,7 +2279,7 @@ def d4_vertical_active_link_neighbors(shape, vertical_ids, bad_index_value=-1):
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (active_link_ids,
     ...     vertical_active_link_ids, d4_vertical_active_link_neighbors)
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> active_link_ids = active_link_ids(rmg.shape, rmg.status_at_node)
     >>> vertical_active_ids = vertical_active_link_ids(
     ...     rmg.shape, active_link_ids)
@@ -2346,7 +2352,7 @@ def bottom_edge_horizontal_ids(shape):
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (
     ...     bottom_edge_horizontal_ids)
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> bottom_edge_horizontal_ids(shape)
     array([0, 1, 2, 3])
@@ -2403,7 +2409,7 @@ def left_edge_horizontal_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import left_edge_horizontal_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> left_edge_horizontal_ids(shape)
     array([ 0,  9, 18, 27])
@@ -2461,7 +2467,7 @@ def top_edge_horizontal_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import top_edge_horizontal_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> top_edge_horizontal_ids(shape)
     array([27, 28, 29, 30])
@@ -2519,7 +2525,7 @@ def right_edge_horizontal_ids(shape):
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import (
     ...     right_edge_horizontal_ids)
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> right_edge_horizontal_ids(shape)
     array([ 3, 12, 21, 30])
@@ -2577,7 +2583,7 @@ def bottom_edge_vertical_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import bottom_edge_vertical_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> bottom_edge_vertical_ids(shape)
     array([4, 5, 6, 7, 8])
@@ -2634,7 +2640,7 @@ def left_edge_vertical_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import left_edge_vertical_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> left_edge_vertical_ids(shape)
     array([ 4, 13, 22])
@@ -2691,7 +2697,7 @@ def top_edge_vertical_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import top_edge_vertical_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> top_edge_vertical_ids(shape)
     array([22, 23, 24, 25, 26])
@@ -2748,7 +2754,7 @@ def right_edge_vertical_ids(shape):
 
     >>> from landlab import RasterModelGrid
     >>> from landlab.grid.structured_quad.links import right_edge_vertical_ids
-    >>> rmg = RasterModelGrid(4, 5)
+    >>> rmg = RasterModelGrid((4, 5))
     >>> shape = rmg.shape
     >>> right_edge_vertical_ids(shape)
     array([ 8, 17, 26])
