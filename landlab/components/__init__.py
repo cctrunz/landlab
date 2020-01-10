@@ -47,35 +47,8 @@ from .transport_length_diffusion import TransportLengthHillslopeDiffuser
 from .uniform_precip import PrecipitationDistribution
 from .vegetation_dynamics import Vegetation
 from .weathering import ExponentialWeatherer
-<<<<<<< HEAD
-from .depth_dependent_diffusion import DepthDependentDiffuser
-from .cubic_nonlinear_hillslope_flux import CubicNonLinearDiffuser
-from .depth_dependent_cubic_soil_creep import DepthDependentCubicDiffuser
-from .erosion_deposition import ErosionDeposition
-from .space import Space
-from .landslides import LandslideProbability
 from .conduit_networks import PresFlowNetwork
 from .conduit_networks import MeltCreep
-
-COMPONENTS = [ChiFinder, LinearDiffuser,
-              Flexure, FlowRouter, DepressionFinderAndRouter,
-              PerronNLDiffuse, OverlandFlowBates, OverlandFlow,
-              KinwaveImplicitOverlandFlow,
-              PotentialEvapotranspiration, PotentialityFlowRouter,
-              Radiation, SinkFiller,
-              StreamPowerEroder, StreamPowerSmoothThresholdEroder,
-              FastscapeEroder, SedDepEroder,
-              PrecipitationDistribution,
-              SteepnessFinder, DetachmentLtdErosion, gFlex,
-              SoilInfiltrationGreenAmpt, FireGenerator,
-              SoilMoisture, Vegetation, VegCA, DrainageDensity,
-              ExponentialWeatherer, DepthDependentDiffuser,
-              CubicNonLinearDiffuser, DepthSlopeProductErosion,
-              FlowDirectorD8, FlowDirectorSteepest, FlowDirectorMFD,
-              FlowDirectorDINF, FlowAccumulator, Space, ErosionDeposition,
-              LandslideProbability, DepthDependentCubicDiffuser,
-              PresFlowNetwork, MeltCreep]
-=======
 
 COMPONENTS = [
     ChiFinder,
@@ -127,7 +100,9 @@ COMPONENTS = [
     Lithology,
     LithoLayers,
     TransportLengthHillslopeDiffuser,
+    PresFlowNetwork,
+    MeltCreep,
 ]
->>>>>>> origin/master
+
 
 __all__ = [cls.__name__ for cls in COMPONENTS]
