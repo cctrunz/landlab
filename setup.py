@@ -75,22 +75,12 @@ setup(
     description="Plugin-based component modeling tool.",
     long_description=open("README.rst").read(),
     setup_requires=["cython", "numpy"],
-    install_requires=[
-        "scipy",
-        "xarray",
-        "matplotlib",
-        "netcdf4",
-        "six",
-        "pyyaml",
-        "statsmodels",
-        "pyshp",
-    ],
+    install_requires=open("requirements.txt", "r").read().splitlines(),
     classifiers=[
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Cython",
-        "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: Implementation :: CPython",
@@ -106,6 +96,8 @@ setup(
             "test/*shx",
             "data/*dbf",
             "preciptest.in",
+            "test_*/*nc",
+            "test_*/*asc",
         ]
     },
     cmdclass=versioneer.get_cmdclass(
