@@ -4,7 +4,7 @@ from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
 from scipy.optimize import fsolve
 import time
-from numba import jit
+#from numba import jit
 
 class PresFlowNetwork(Component):
     """
@@ -183,7 +183,7 @@ class PresFlowNetwork(Component):
 #### End attempt to incorporate direct residual solver (not working yet)
 ##############
 
-    @jit(nopython=True)
+#    @jit(nopython=True)#This doesn't work directly. Probably have to create a jitclass
     def run_one_step(self):#, **kwds):
         #Calculate flow in network
         max_tol = 1e-5#0.001
