@@ -3,6 +3,8 @@ import numpy as np
 from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
 from scipy.optimize import fsolve
+import time
+from numba import jit
 
 class PresFlowNetwork(Component):
     """
@@ -181,8 +183,8 @@ class PresFlowNetwork(Component):
 #### End attempt to incorporate direct residual solver (not working yet)
 ##############
 
-
-    def run_one_step(self, **kwds):
+    @jit(nopython=True)
+    def run_one_step(self):#, **kwds):
         #Calculate flow in network
         max_tol = 1e-5#0.001
         tol = 1.
@@ -194,6 +196,7 @@ class PresFlowNetwork(Component):
         self.calc_r()
         r = self.r
         while tol>max_tol:
+            start = time.time()
             Q_ij = self.Q[links][self.grid.core_nodes]*self.grid.active_link_dirs_at_node[self.grid.core_nodes]
             F = np.sum(Q_ij*(1. - 1./a[links][self.grid.core_nodes] ), axis=1)
             #Add recharge to nodes
@@ -238,5 +241,7 @@ class PresFlowNetwork(Component):
             #tol = np.mean(np.fabs(dQ/self.Q[self.grid.active_links]))
             #max_change = np.max(np.fabs(dQ/self.Q[self.grid.active_links]))
             tol = np.max(dQ)
-            print("Number of iterations =", niter, "tolerance =", tol) #,"max_change=",max_change, " max_dQ=",max_dQ
+            end = time.time()
+            print("Number of iterations =", niter, "tolerance =", tol, " iteration time=",end-start) #,"max_change=",max_change, " max_dQ=",max_dQ
             niter += 1
+            
