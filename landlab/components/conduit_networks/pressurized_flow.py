@@ -23,14 +23,14 @@ class PresFlowNetwork(Component):
         A Landlab grid object.
 
     [add later]
-    
+
     Notes
     -----
     Solver uses Newton-Raphson Global Algorithm from:
-    
+
     Todini and Rossmann (2013), Unified Framework for Deriving Siultaneous Equation Algorithms for Water Distribution Networks, Journal of Hydraulic Engineering, 139, 5, 511-526.
-    
-    
+
+
 
     """
     _name = 'PresFlowNetwork'
@@ -85,7 +85,7 @@ class PresFlowNetwork(Component):
     }
 
     def __init__(self, grid, flow_eqn='Darcy-Weisbach',
-                    shape_factor=np.pi, g=9.81, f=0.1, **kwds):
+                    shape_factor=np.pi, g=9.81, f=0.1, solutes=None,**kwds):
         """
         Initialize the PresFlowNetwork
 
@@ -140,6 +140,21 @@ class PresFlowNetwork(Component):
             self.Q = grid.at_link['conduit__discharge']
         else:
             self.Q = grid.add_ones('link', 'conduit__discharge')
+        self.solutes = solutes
+        if self.solutes != None:
+            #Loop through list of solutes and create associated link and node values
+            for solute in solutes:
+                if type(solute)!=str:
+                    raise FieldError(
+                        'Solutes keyword argument must be a list of strings of solute names!')
+                #create empty node solute values
+                self.grid.add_zeros('node','concentration__'+solute)
+                #create empty link solute concentration values
+                self.grid.add_zeros('link',solute+'__conc_in')
+                self.grid.add_zeros('link',solute+'__conc_out')
+                #Create node inflow concentration on grid if not already available
+                if not solute+'__inflow_conc' in grid.at_node:
+                    self.grid.add_zeros('node', solute+'__inflow_conc')
 
     def calc_r(self):
         """
@@ -184,7 +199,13 @@ class PresFlowNetwork(Component):
 ##############
 
 #    @jit(nopython=True)#This doesn't work directly. Probably have to create a jitclass
-    def run_one_step(self):#, **kwds):
+
+    def run_one_step(self, transport=False):#, **kwds):
+        self.calculate_flow()
+        if transport:
+            self.steady_state_transport()
+
+    def calculate_flow(self):
         #Calculate flow in network
         max_tol = 1e-5#0.001
         tol = 1.
@@ -244,4 +265,44 @@ class PresFlowNetwork(Component):
             end = time.time()
             print("Number of iterations =", niter, "tolerance =", tol, " iteration time=",end-start) #,"max_change=",max_change, " max_dQ=",max_dQ
             niter += 1
-            
+
+    def steady_state_transport(self):
+        if self.solutes==None:
+            #Not really a field error, need to find more appropriate error to raise
+            raise FieldError(
+                'Cannot run transport if no solutes are provided!')
+        #Get index of nodes sorted by descending head
+        sorted_idx = np.argsort(-self.h)#Sort on negative to get descending order sort
+        #Loop through nodes from highest to lowest hydraulic head
+        for node_idx in sorted_idx:
+            #Determine link indicies and directions for this node
+            this_node_links = self.grid.links_at_node[node_idx]
+            this_node_dirs = self.grid.active_link_dirs_at_node[node_idx]
+
+            #Determine which links have inflow and outflow to/from node
+            node_Qs = self.grid.at_link['conduit__discharge'][this_node_links]*this_node_dirs
+            node_inflow_links = this_node_links[node_Qs>0]
+            node_outflow_links = this_node_links[node_Qs<0]
+
+            #Calculate node concentration from inflows (including boundary inflows)
+            total_inflow = np.abs(self.grid.at_link['conduit__discharge'][node_inflow_links]).sum() + \
+                            self.grid.at_node['input__discharge'][node_idx]
+
+            for solute in self.solutes:
+                #avoid cases with no inflow (e.g. boundaries)
+                if total_inflow !=0:
+                    conc_mult = np.abs(self.grid.at_link['conduit__discharge'][node_inflow_links])*self.grid.at_link[solute+'__conc_out'][node_inflow_links]
+                    input_conc_mult = self.grid.at_node['input__discharge'][node_idx]*self.grid.at_node[solute+'__inflow_conc'][node_idx]
+                    conc_node = (conc_mult.sum() + input_conc_mult)/total_inflow
+
+                    self.grid.at_node['concentration__'+solute][node_idx] = conc_node
+
+                    #set outflow link concentrations
+                    self.grid.at_link[solute+'__conc_in'][node_outflow_links] = conc_node
+
+                else: #No inflow links (e.g. boundary node)
+                    #Assume node concentration is fixed and set outflow conc to node conc
+                    self.grid.at_link[solute+'__conc_in'][node_outflow_links] = self.grid.at_node['concentration__'+solute][node_idx]
+
+                #Calculate output link concentrations (for now conservative)
+                self.grid.at_link[solute+'__conc_out'][node_outflow_links] = self.grid.at_link[solute+'__conc_in'][node_outflow_links]
