@@ -28,7 +28,9 @@ class PresFlowNetwork(Component):
     -----
     Solver uses Newton-Raphson Global Algorithm from:
 
-    Todini and Rossmann (2013), Unified Framework for Deriving Siultaneous Equation Algorithms for Water Distribution Networks, Journal of Hydraulic Engineering, 139, 5, 511-526.
+    Todini and Rossmann (2013), Unified Framework for Deriving
+    Simultaneous Equation Algorithms for Water Distribution
+    Networks, Journal of Hydraulic Engineering, 139, 5, 511-526.
 
 
 
@@ -85,7 +87,11 @@ class PresFlowNetwork(Component):
     }
 
     def __init__(self, grid, flow_eqn='Darcy-Weisbach',
-                    shape_factor=np.pi, g=9.81, f=0.1, solutes=None,**kwds):
+                    shape_factor=np.pi, g=9.81, f=0.1, solutes=None,
+                    transfer_func=None,
+                    transfer_func_link_variables=[],
+                    transfer_kwd_args={},
+                    **kwds):
         """
         Initialize the PresFlowNetwork
 
@@ -155,6 +161,9 @@ class PresFlowNetwork(Component):
                 #Create node inflow concentration on grid if not already available
                 if not solute+'__inflow_conc' in grid.at_node:
                     self.grid.add_zeros('node', solute+'__inflow_conc')
+        self.transfer_func = transfer_func
+        self.transfer_func_link_variables = transfer_func_link_variables
+        self.transfer_kwd_args = transfer_kwd_args
 
     def calc_r(self):
         """
@@ -200,9 +209,12 @@ class PresFlowNetwork(Component):
 
 #    @jit(nopython=True)#This doesn't work directly. Probably have to create a jitclass
 
-    def run_one_step(self, transport=False):#, **kwds):
+    def run_one_step(self, transport=False, transfer_kwd_args=None):#, **kwds):
         self.calculate_flow()
         if transport:
+            #Allow updating of kwd args to transfer function during run_one_step()
+            if transfer_kwd_args!= None:
+                self.transfer_kwd_args = transfer_kwd_args
             self.steady_state_transport()
 
     def calculate_flow(self):
@@ -304,5 +316,23 @@ class PresFlowNetwork(Component):
                     #Assume node concentration is fixed and set outflow conc to node conc
                     self.grid.at_link[solute+'__conc_in'][node_outflow_links] = self.grid.at_node['concentration__'+solute][node_idx]
 
-                #Calculate output link concentrations (for now conservative)
-                self.grid.at_link[solute+'__conc_out'][node_outflow_links] = self.grid.at_link[solute+'__conc_in'][node_outflow_links]
+                if self.transfer_func==None:
+                    #Calculate output link concentrations (for conservative transport)
+                    self.grid.at_link[solute+'__conc_out'][node_outflow_links] = self.grid.at_link[solute+'__conc_in'][node_outflow_links]
+            if self.transfer_func != None:
+                #Calculate output concentrations according to provided transfer function
+                #First extract needed link concentrations
+                concs_in = {}
+                for solute in self.solutes:
+                    concs_in[solute] = self.grid.at_link[solute+'__conc_in'][node_outflow_links]
+                link_vars = {}
+                for link_variable in self.transfer_func_link_variables:
+                    link_vars[link_variable] = self.grid.at_link[link_variable][node_outflow_links]
+                transfer_dict = self.transfer_func(**concs_in, **link_vars, **self.transfer_kwd_args, length = self.grid.length_of_link[node_outflow_links])
+                solutes_out = transfer_dict['solutes']
+                for solute in solutes_out:
+                    self.grid.at_link[solute+'__conc_out'][node_outflow_links] = solutes_out[solute]
+                new_link_value_dict = transfer_dict['new_link_values']
+                #Update link values (e.g. rates for calculating conduit evolution)
+                for link_var in new_link_value_dict:
+                    self.grid.at_link[link_var][node_outflow_links] = new_link_value_dict[link_var]
