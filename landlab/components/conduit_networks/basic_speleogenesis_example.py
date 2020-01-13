@@ -79,7 +79,7 @@ print("Number of active links = ", mg.number_of_active_links)
 print("Number of core nodes = ", mg.number_of_core_nodes)
 
 d_h = mg.add_zeros('link','hydraulic__diameter')
-mg.at_link['hydraulic__diameter'][mg.active_links]= 0.01*np.random.rand(mg.number_of_active_links)+0.1
+mg.at_link['hydraulic__diameter'][mg.active_links]= 0.01*np.random.rand(mg.number_of_active_links)
 
 rates = mg.add_zeros('link','diss__rates')
 
