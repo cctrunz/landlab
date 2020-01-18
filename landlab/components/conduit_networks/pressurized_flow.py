@@ -385,12 +385,13 @@ class PresFlowNetwork(Component):
             #print('D_H=',self.d_h)
             U = self.Q[active_links]/A_avg
             #print('U=',U)
-            dQ_pres = -self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*dt
+            dQ_pres = self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*dt#Original had a negative sign in front of this term. seems to work without. (check this)
             dQ_fric = self.f*np.abs(U)/(2.*self.d_h[active_links])*dt
             #print('dQ_pres=',dQ_pres)
             #print('dQ_fric=',dQ_fric)
             Q_new = (Q_old[active_links] + dQ_pres) / (1. + dQ_fric)
             self.Q[active_links] = (1. - self.Theta)*self.Q[active_links] + self.Theta*Q_new
+            dQ = abs(Q_new - Q_old[active_links])
             #max_percent_change = np.max((Q_old[active_links] - Q_new))
             #print ('Iteration: ', num_iterations, '  (Q_old - Q_new)= ',max_percent_change )
             #if max_percent_change<0.0001:
@@ -402,7 +403,8 @@ class PresFlowNetwork(Component):
             print('max Q_old =', max(Q_old))
         #   Head iteration
             Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
-            h_new = h_old[self.grid.core_nodes] + 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
+            dh = 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
+            h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
             #Check for convergence
             if num_iterations>0:
@@ -412,6 +414,8 @@ class PresFlowNetwork(Component):
                     converged=True
             self.h[self.grid.core_nodes] = h_new
             num_iterations+=1
+        print("average dh=",np.mean(dh), '  average abs(dQ)=', np.mean(dQ))
+
 
 
         #return self.Q
