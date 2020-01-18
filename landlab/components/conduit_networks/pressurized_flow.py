@@ -351,7 +351,7 @@ class PresFlowNetwork(Component):
         Here we use this solver only as a means of calculating steady flow.
         """
         #Determine flow depths at upstream and downstream ends of links
-        FUDGE = 0.0001
+        FUDGE = 0.000001
         active_links = self.grid.active_links
         head_nodes = self.grid.node_at_link_head[active_links]
         tail_nodes = self.grid.node_at_link_tail[active_links]
@@ -373,12 +373,14 @@ class PresFlowNetwork(Component):
             #Check for cases where flow depth is above conduit ceiling and reset to max flow depth.
             y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
             y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
+            #Check for negative cases
+            y_tail[y_tail<FUDGE] = FUDGE
+            y_head[y_head<FUDGE] = FUDGE
             #Calculate flow XC area for square XCs
             y_avg = 0.5*(y_head + y_tail)
             A_avg = self.grid.at_link['width'][active_links] * y_avg
-            y_avg[y_avg<FUDGE] = FUDGE
             A_avg[A_avg<FUDGE] = FUDGE
-            #print('y=',y_avg)
+            print('y=',y_avg)
             #print('A=',A_avg)
             #Calculate hydraulic diameters and write into grid values
             self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
