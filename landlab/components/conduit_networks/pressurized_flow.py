@@ -355,47 +355,66 @@ class PresFlowNetwork(Component):
         active_links = self.grid.active_links
         head_nodes = self.grid.node_at_link_head[active_links]
         tail_nodes = self.grid.node_at_link_tail[active_links]
-        h_head = self.grid.at_node['hydraulic__head'][head_nodes]
-        h_tail = self.grid.at_node['hydraulic__head'][tail_nodes]
-        #Calculate flow depths using offset and junction elevations
-        y_head = h_head - self.grid.at_node['junction__elevation'][head_nodes] \
-                        - self.grid.at_link['conduit_head__offset'][active_links]
-        y_tail = h_tail - self.grid.at_node['junction__elevation'][tail_nodes] \
-                        - self.grid.at_link['conduit_tail__offset'][active_links]
-        #Check for cases where flow depth is above conduit ceiling and reset to max flow depth.
-        y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
-        y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
-        #Calculate flow XC area for square XCs
-        y_avg = 0.5*(y_head + y_tail)
-        A_avg = self.grid.at_link['width'][active_links] * y_avg
-        y_avg[y_avg<FUDGE] = FUDGE
-        A_avg[A_avg<FUDGE] = FUDGE
-        print('y=',y_avg)
-        print('A=',A_avg)
-        #Calculate hydraulic diameters and write into grid values
-        self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
-        print('D_H=',self.d_h)
+        #Store values at current time
+        Q_old = self.Q.copy()
+        h_old = self.h.copy()
+        Q_sum_old = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
         converged = False
         num_iterations = 0
         max_iterations = 50
         while not converged and num_iterations<max_iterations:
-            Q_old = self.Q[active_links]
-            U = Q_old/A_avg
-            print('U=',U)
+            h_head = self.h[head_nodes]
+            h_tail = self.h[tail_nodes]
+            #Calculate flow depths using offset and junction elevations
+            y_head = h_head - self.grid.at_node['junction__elevation'][head_nodes] \
+                            - self.grid.at_link['conduit_head__offset'][active_links]
+            y_tail = h_tail - self.grid.at_node['junction__elevation'][tail_nodes] \
+                            - self.grid.at_link['conduit_tail__offset'][active_links]
+            #Check for cases where flow depth is above conduit ceiling and reset to max flow depth.
+            y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
+            y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
+            #Calculate flow XC area for square XCs
+            y_avg = 0.5*(y_head + y_tail)
+            A_avg = self.grid.at_link['width'][active_links] * y_avg
+            y_avg[y_avg<FUDGE] = FUDGE
+            A_avg[A_avg<FUDGE] = FUDGE
+            #print('y=',y_avg)
+            #print('A=',A_avg)
+            #Calculate hydraulic diameters and write into grid values
+            self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
+            #print('D_H=',self.d_h)
+            U = self.Q[active_links]/A_avg
+            #print('U=',U)
             dQ_pres = -self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*dt
             dQ_fric = self.f*np.abs(U)/(2.*self.d_h[active_links])*dt
-            print('dQ_pres=',dQ_pres)
-            print('dQ_fric=',dQ_fric)
-            Q_new = (Q_old + dQ_pres) / (1. + dQ_fric)
-            self.Q[active_links] = (1. - self.Theta)*Q_old + self.Theta*Q_new
-            max_percent_change = np.max((Q_old - Q_new))
-            print ('Iteration: ', num_iterations, '  (Q_old - Q_new)= ',max_percent_change )
-            if max_percent_change<0.0001:
-                converged = True
-            num_iterations += 1
-        #Iteratively solve momentum equation using values of area, velocity, and d_h from
-        #previous head and discharge values.
-        return self.Q
+            #print('dQ_pres=',dQ_pres)
+            #print('dQ_fric=',dQ_fric)
+            Q_new = (Q_old[active_links] + dQ_pres) / (1. + dQ_fric)
+            self.Q[active_links] = (1. - self.Theta)*self.Q[active_links] + self.Theta*Q_new
+            #max_percent_change = np.max((Q_old[active_links] - Q_new))
+            #print ('Iteration: ', num_iterations, '  (Q_old - Q_new)= ',max_percent_change )
+            #if max_percent_change<0.0001:
+            #    converged = True
+            #num_iterations += 1
+            #Iteratively solve momentum equation using values of area, velocity, and d_h from
+            #previous head and discharge values.
+            print('max h_old=',max(h_old))
+            print('max Q_old =', max(Q_old))
+        #   Head iteration
+            Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
+            h_new = h_old[self.grid.core_nodes] + 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
+            h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
+            #Check for convergence
+            if num_iterations>0:
+                max_change_h = max(h_new - self.h[self.grid.core_nodes])
+                print('max change in h: ', max_change_h)
+                if max_change_h < 0.0001:
+                    converged=True
+            self.h[self.grid.core_nodes] = h_new
+            num_iterations+=1
+
+
+        #return self.Q
 
     def d_h_square(self, width, flow_depth):
         d_H = np.zeros(np.size(width))
