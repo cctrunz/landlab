@@ -358,7 +358,7 @@ class PresFlowNetwork(Component):
         #Store values at current time
         Q_old = self.Q.copy()
         h_old = self.h.copy()
-        Q_sum_old = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
+        Q_sum_old = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx + self.grid.at_node['input__discharge'][self.grid.core_nodes]
         converged = False
         num_iterations = 0
         max_iterations = 50
@@ -376,11 +376,16 @@ class PresFlowNetwork(Component):
             #Check for negative cases
             y_tail[y_tail<FUDGE] = FUDGE
             y_head[y_head<FUDGE] = FUDGE
+            head_is_higher_than_tail = h_head>h_tail
+            y_avg = np.zeros(len(y_tail))
+            y_avg[head_is_higher_than_tail] = y_head[head_is_higher_than_tail]
+            y_avg[~head_is_higher_than_tail] = y_tail[~head_is_higher_than_tail]
+#            y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
+            #Using the upstream value seems to rid of strange downstream boundary effects that impact entire network
             #Calculate flow XC area for square XCs
-            y_avg = 0.5*(y_head + y_tail)
             A_avg = self.grid.at_link['width'][active_links] * y_avg
             A_avg[A_avg<FUDGE] = FUDGE
-            print('y=',y_avg)
+            #print('y=',y_avg)
             #print('A=',A_avg)
             #Calculate hydraulic diameters and write into grid values
             self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
@@ -401,10 +406,14 @@ class PresFlowNetwork(Component):
             #num_iterations += 1
             #Iteratively solve momentum equation using values of area, velocity, and d_h from
             #previous head and discharge values.
-            print('max h_old=',max(h_old))
-            print('max Q_old =', max(Q_old))
+            #print('max h_old=',max(h_old))
+            #print('max Q_old =', max(Q_old))
         #   Head iteration
-            Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx - self.grid.at_node['input__discharge'][self.grid.core_nodes]
+
+            #Note: Changed the sign in discharge input in Q_sum (both old and new).
+            #This seemed to fix test case 2. Maybe there is something funny with discharge
+            #signs to begin with. Go back through landlab grid specs to check my procedure. 
+            Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx + self.grid.at_node['input__discharge'][self.grid.core_nodes]
             dh = 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
             h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
@@ -425,6 +434,7 @@ class PresFlowNetwork(Component):
     def d_h_square(self, width, flow_depth):
         d_H = np.zeros(np.size(width))
         is_full_pipe = np.isclose(width,flow_depth)
+        #print("width =",width, " flow_depth=",flow_depth)
         d_H[is_full_pipe] = width[is_full_pipe]
         d_H[~is_full_pipe] = 4.*width[~is_full_pipe]*flow_depth[~is_full_pipe] / (2.*flow_depth[~is_full_pipe] + width[~is_full_pipe])
         return d_H
