@@ -6,6 +6,7 @@ from scipy.optimize import fsolve
 import time
 #from numba import jit
 
+
 class PresFlowNetwork(Component):
     """
     Calculate water flow within a pressurized network.
@@ -35,7 +36,12 @@ class PresFlowNetwork(Component):
 
 
     """
+
+
+
     _name = 'PresFlowNetwork'
+
+
 
     _input_var_names = (
         'junction__elevation',
@@ -113,6 +119,7 @@ class PresFlowNetwork(Component):
             )
         self.g = g
         self.f = f
+        self.Theta = 0.5 #Relaxation factor for flow solution iterations
         self.shape_factor = shape_factor
         ##Create fields
         if 'junction__elevation' in grid.at_node:
@@ -141,7 +148,7 @@ class PresFlowNetwork(Component):
         if 'hydraulic__head' in grid.at_node:
             self.h = grid.at_node['hydraulic__head']
         else:
-            self.h = grid.add_zeros('node', 'hyraulic__head')
+            self.h = grid.add_zeros('node', 'hydraulic__head')
         if 'conduit__discharge' in grid.at_link:
             self.Q = grid.at_link['conduit__discharge']
         else:
@@ -336,3 +343,63 @@ class PresFlowNetwork(Component):
                 #Update link values (e.g. rates for calculating conduit evolution)
                 for link_var in new_link_value_dict:
                     self.grid.at_link[link_var][node_outflow_links] = new_link_value_dict[link_var]
+
+
+    def dyn_wave_solution(self, dt=500.):
+        """
+        Dynamic wave solver based on algorithm used in SWMM. Inertial terms are neglected.
+        Here we use this solver only as a means of calculating steady flow.
+        """
+        #Determine flow depths at upstream and downstream ends of links
+        FUDGE = 0.0001
+        active_links = self.grid.active_links
+        head_nodes = self.grid.node_at_link_head[active_links]
+        tail_nodes = self.grid.node_at_link_tail[active_links]
+        h_head = self.grid.at_node['hydraulic__head'][head_nodes]
+        h_tail = self.grid.at_node['hydraulic__head'][tail_nodes]
+        #Calculate flow depths using offset and junction elevations
+        y_head = h_head - self.grid.at_node['junction__elevation'][head_nodes] \
+                        - self.grid.at_link['conduit_head__offset'][active_links]
+        y_tail = h_tail - self.grid.at_node['junction__elevation'][tail_nodes] \
+                        - self.grid.at_link['conduit_tail__offset'][active_links]
+        #Check for cases where flow depth is above conduit ceiling and reset to max flow depth.
+        y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
+        y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
+        #Calculate flow XC area for square XCs
+        y_avg = 0.5*(y_head + y_tail)
+        A_avg = self.grid.at_link['width'][active_links] * y_avg
+        y_avg[y_avg<FUDGE] = FUDGE
+        A_avg[A_avg<FUDGE] = FUDGE
+        print('y=',y_avg)
+        print('A=',A_avg)
+        #Calculate hydraulic diameters and write into grid values
+        self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
+        print('D_H=',self.d_h)
+        converged = False
+        num_iterations = 0
+        max_iterations = 50
+        while not converged and num_iterations<max_iterations:
+            Q_old = self.Q[active_links]
+            U = Q_old/A_avg
+            print('U=',U)
+            dQ_pres = -self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*dt
+            dQ_fric = self.f*np.abs(U)/(2.*self.d_h[active_links])*dt
+            print('dQ_pres=',dQ_pres)
+            print('dQ_fric=',dQ_fric)
+            Q_new = (Q_old + dQ_pres) / (1. + dQ_fric)
+            self.Q[active_links] = (1. - self.Theta)*Q_old + self.Theta*Q_new
+            max_percent_change = np.max((Q_old - Q_new))
+            print ('Iteration: ', num_iterations, '  (Q_old - Q_new)= ',max_percent_change )
+            if max_percent_change<0.0001:
+                converged = True
+            num_iterations += 1
+        #Iteratively solve momentum equation using values of area, velocity, and d_h from
+        #previous head and discharge values.
+        return self.Q
+
+    def d_h_square(self, width, flow_depth):
+        d_H = np.zeros(np.size(width))
+        is_full_pipe = np.isclose(width,flow_depth)
+        d_H[is_full_pipe] = width[is_full_pipe]
+        d_H[~is_full_pipe] = 4.*width[~is_full_pipe]*flow_depth[~is_full_pipe] / (2.*flow_depth[~is_full_pipe] + width[~is_full_pipe])
+        return d_H
