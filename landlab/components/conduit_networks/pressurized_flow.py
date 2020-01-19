@@ -374,13 +374,14 @@ class PresFlowNetwork(Component):
             y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
             y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
             #Check for negative cases
-            y_tail[y_tail<FUDGE] = FUDGE
-            y_head[y_head<FUDGE] = FUDGE
+            #y_tail[y_tail<FUDGE] = FUDGE
+            #y_head[y_head<FUDGE] = FUDGE
             head_is_higher_than_tail = h_head>h_tail
             y_avg = np.zeros(len(y_tail))
             y_avg[head_is_higher_than_tail] = y_head[head_is_higher_than_tail]
             y_avg[~head_is_higher_than_tail] = y_tail[~head_is_higher_than_tail]
-#            y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
+            y_avg[y_avg<FUDGE] = FUDGE
+            #y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
             #Using the upstream value seems to rid of strange downstream boundary effects that impact entire network
             #Calculate flow XC area for square XCs
             A_avg = self.grid.at_link['width'][active_links] * y_avg
@@ -412,7 +413,7 @@ class PresFlowNetwork(Component):
 
             #Note: Changed the sign in discharge input in Q_sum (both old and new).
             #This seemed to fix test case 2. Maybe there is something funny with discharge
-            #signs to begin with. Go back through landlab grid specs to check my procedure. 
+            #signs to begin with. Go back through landlab grid specs to check my procedure.
             Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx + self.grid.at_node['input__discharge'][self.grid.core_nodes]
             dh = 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
             h_new = h_old[self.grid.core_nodes] + dh
