@@ -2,7 +2,7 @@ from landlab import Component, FieldError
 import numpy as np
 from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, brentq
 import time
 #from numba import jit
 
@@ -345,7 +345,7 @@ class PresFlowNetwork(Component):
                     self.grid.at_link[link_var][node_outflow_links] = new_link_value_dict[link_var]
 
 
-    def dyn_wave_solution(self, dt=500.):
+    def dyn_wave_solution(self, dt=500., normal_flow_bnd = False):
         """
         Dynamic wave solver based on algorithm used in SWMM. Inertial terms are neglected.
         Here we use this solver only as a means of calculating steady flow.
@@ -418,6 +418,37 @@ class PresFlowNetwork(Component):
             dh = 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
             h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
+
+            if normal_flow_bnd:
+                #Adjust boundary heads on open boundaries
+                upwind_links = self.grid.upwind_links_at_node(self.Q)[self.grid.open_boundary_nodes]
+                for i, row in enumerate(upwind_links):
+                    bnd_node = self.grid.open_boundary_nodes[i]
+                    boundary_link = row[row>0]
+                    if np.size(boundary_link==1):
+                        link_nodes = self.grid.nodes_at_link[boundary_link]
+                        upstream_node = link_nodes[link_nodes != bnd_node]
+                        equiv_upstream_flow_depth = self.grid.at_node['hydraulic__head'][upstream_node] - self.grid.at_node['junction__elevation'][upstream_node]
+                        #If full pipe set head to ceiling of conduit
+                        if equiv_upstream_flow_depth>=self.grid.at_link['maximum__depth'][boundary_link]:
+                            self.grid.at_node['hydraulic__head'][bnd_node] = self.grid.at_link['maximum__depth'][boundary_link] + self.grid.at_node['junction__elevation'][bnd_node]#equiv_upstream_flow_depth*0.95
+                        else:
+                            print("Entering normal flow calc.")
+                            #Set depth to that of normal flow given the current discharge
+                            slope = (self.grid.at_node['junction__elevation'][upstream_node] - self.grid.at_node['junction__elevation'][bnd_node])/self.grid.length_of_link[boundary_link]
+                            print('slope=',slope, '  Q=',self.Q[boundary_link])
+                            if slope >0 and abs(self.Q[boundary_link])>FUDGE: #This fails for flat conduits or conduits with zero Q
+                                width = self.grid.at_link['width'][boundary_link]
+                                bnd_Q = self.Q[boundary_link]
+                                print("equiv_upstream_flow_depth=",equiv_upstream_flow_depth)
+                                max_y = self.grid.at_link['maximum__depth'][boundary_link]
+#                                print(slope, width, bnd_Q)
+                                print('f(a)=',self.normal_flow_residual(equiv_upstream_flow_depth/2., slope, bnd_Q,width), '  f(b)=',self.normal_flow_residual(max_y, slope, bnd_Q,width))
+                                if self.normal_flow_residual(FUDGE, slope, bnd_Q,width)*self.normal_flow_residual(max_y, slope, bnd_Q,width)<0:
+                                    y_norm = brentq(self.normal_flow_residual, FUDGE, max_y, args=(slope,bnd_Q,width))
+                                    print('y_norm=',y_norm)
+                                    self.grid.at_node['hydraulic__head'][bnd_node] = y_norm + self.grid.at_node['junction__elevation'][bnd_node]
+
             #Check for convergence
             if num_iterations>0:
                 max_change_h = max(h_new - self.h[self.grid.core_nodes])
@@ -435,7 +466,16 @@ class PresFlowNetwork(Component):
     def d_h_square(self, width, flow_depth):
         d_H = np.zeros(np.size(width))
         is_full_pipe = np.isclose(width,flow_depth)
-        #print("width =",width, " flow_depth=",flow_depth)
-        d_H[is_full_pipe] = width[is_full_pipe]
-        d_H[~is_full_pipe] = 4.*width[~is_full_pipe]*flow_depth[~is_full_pipe] / (2.*flow_depth[~is_full_pipe] + width[~is_full_pipe])
+        if np.size(width) > 1:
+            #print("width =",width, " flow_depth=",flow_depth)
+            d_H[is_full_pipe] = width[is_full_pipe]
+            d_H[~is_full_pipe] = 4.*width[~is_full_pipe]*flow_depth[~is_full_pipe] / (2.*flow_depth[~is_full_pipe] + width[~is_full_pipe])
+        else:
+            if is_full_pipe:
+                d_H = width
+            else:
+                d_H = 4.*width*flow_depth/(2.*flow_depth + width)
         return d_H
+
+    def normal_flow_residual(self, y, slope, Q, width):
+        return slope - self.f *Q**2./(2.*self.g * self.d_h_square(width,y) * width**2 * y**2)
