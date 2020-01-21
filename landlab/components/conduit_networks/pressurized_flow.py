@@ -345,7 +345,7 @@ class PresFlowNetwork(Component):
                     self.grid.at_link[link_var][node_outflow_links] = new_link_value_dict[link_var]
 
 
-    def dyn_wave_solution(self, dt=500., normal_flow_bnd = False):
+    def dyn_wave_solution(self, dt=500., outflow_bnd_type = 'head'):
         """
         Dynamic wave solver based on algorithm used in SWMM. Inertial terms are neglected.
         Here we use this solver only as a means of calculating steady flow.
@@ -374,14 +374,14 @@ class PresFlowNetwork(Component):
             y_head[y_head>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_head>self.grid.at_link['maximum__depth'][active_links]]
             y_tail[y_tail>self.grid.at_link['maximum__depth'][active_links]] = self.grid.at_link['maximum__depth'][active_links][y_tail>self.grid.at_link['maximum__depth'][active_links]]
             #Check for negative cases
-            #y_tail[y_tail<FUDGE] = FUDGE
-            #y_head[y_head<FUDGE] = FUDGE
-            head_is_higher_than_tail = h_head>h_tail
-            y_avg = np.zeros(len(y_tail))
-            y_avg[head_is_higher_than_tail] = y_head[head_is_higher_than_tail]
-            y_avg[~head_is_higher_than_tail] = y_tail[~head_is_higher_than_tail]
-            y_avg[y_avg<FUDGE] = FUDGE
-            #y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
+            y_tail[y_tail<FUDGE] = FUDGE
+            y_head[y_head<FUDGE] = FUDGE
+            #head_is_higher_than_tail = h_head>h_tail
+            #y_avg = np.zeros(len(y_tail))
+            #y_avg[head_is_higher_than_tail] = y_head[head_is_higher_than_tail]
+            #y_avg[~head_is_higher_than_tail] = y_tail[~head_is_higher_than_tail]
+            #y_avg[y_avg<FUDGE] = FUDGE
+            y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
             #Using the upstream value seems to rid of strange downstream boundary effects that impact entire network
             #Calculate flow XC area for square XCs
             A_avg = self.grid.at_link['width'][active_links] * y_avg
@@ -419,7 +419,7 @@ class PresFlowNetwork(Component):
             h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
 
-            if normal_flow_bnd:
+            if outflow_bnd_type!='head':
                 #Adjust boundary heads on open boundaries
                 upwind_links = self.grid.upwind_links_at_node(self.Q)[self.grid.open_boundary_nodes]
                 for i, row in enumerate(upwind_links):
@@ -429,25 +429,32 @@ class PresFlowNetwork(Component):
                         link_nodes = self.grid.nodes_at_link[boundary_link]
                         upstream_node = link_nodes[link_nodes != bnd_node]
                         equiv_upstream_flow_depth = self.grid.at_node['hydraulic__head'][upstream_node] - self.grid.at_node['junction__elevation'][upstream_node]
+                        width = self.grid.at_link['width'][boundary_link]
+                        bnd_Q = self.Q[boundary_link]
                         #If full pipe set head to ceiling of conduit
-                        if equiv_upstream_flow_depth>=self.grid.at_link['maximum__depth'][boundary_link]:
-                            self.grid.at_node['hydraulic__head'][bnd_node] = self.grid.at_link['maximum__depth'][boundary_link] + self.grid.at_node['junction__elevation'][bnd_node]#equiv_upstream_flow_depth*0.95
-                        else:
-                            print("Entering normal flow calc.")
-                            #Set depth to that of normal flow given the current discharge
-                            slope = (self.grid.at_node['junction__elevation'][upstream_node] - self.grid.at_node['junction__elevation'][bnd_node])/self.grid.length_of_link[boundary_link]
-                            print('slope=',slope, '  Q=',self.Q[boundary_link])
-                            if slope >0 and abs(self.Q[boundary_link])>FUDGE: #This fails for flat conduits or conduits with zero Q
-                                width = self.grid.at_link['width'][boundary_link]
-                                bnd_Q = self.Q[boundary_link]
-                                print("equiv_upstream_flow_depth=",equiv_upstream_flow_depth)
-                                max_y = self.grid.at_link['maximum__depth'][boundary_link]
-#                                print(slope, width, bnd_Q)
-                                print('f(a)=',self.normal_flow_residual(equiv_upstream_flow_depth/2., slope, bnd_Q,width), '  f(b)=',self.normal_flow_residual(max_y, slope, bnd_Q,width))
-                                if self.normal_flow_residual(FUDGE, slope, bnd_Q,width)*self.normal_flow_residual(max_y, slope, bnd_Q,width)<0:
-                                    y_norm = brentq(self.normal_flow_residual, FUDGE, max_y, args=(slope,bnd_Q,width))
-                                    print('y_norm=',y_norm)
-                                    self.grid.at_node['hydraulic__head'][bnd_node] = y_norm + self.grid.at_node['junction__elevation'][bnd_node]
+                        if outflow_bnd_type=='normal':
+                            if equiv_upstream_flow_depth>=self.grid.at_link['maximum__depth'][boundary_link]:
+                                self.grid.at_node['hydraulic__head'][bnd_node] = self.grid.at_link['maximum__depth'][boundary_link] + self.grid.at_node['junction__elevation'][bnd_node]#equiv_upstream_flow_depth*0.95
+                            else:
+                                print("Entering normal flow calc.")
+                                #Set depth to that of normal flow given the current discharge
+                                slope = (self.grid.at_node['junction__elevation'][upstream_node] - self.grid.at_node['junction__elevation'][bnd_node])/self.grid.length_of_link[boundary_link]
+                                print('slope=',slope, '  Q=',self.Q[boundary_link])
+                                if slope >0 and abs(self.Q[boundary_link])>FUDGE: #This fails for flat conduits or conduits with zero Q
+                                    print("equiv_upstream_flow_depth=",equiv_upstream_flow_depth)
+                                    max_y = self.grid.at_link['maximum__depth'][boundary_link]
+    #                                print(slope, width, bnd_Q)
+                                    print('f(a)=',self.normal_flow_residual(equiv_upstream_flow_depth/2., slope, bnd_Q,width), '  f(b)=',self.normal_flow_residual(max_y, slope, bnd_Q,width))
+                                    if self.normal_flow_residual(FUDGE, slope, bnd_Q,width)*self.normal_flow_residual(max_y, slope, bnd_Q,width)<0:
+                                        y_norm = brentq(self.normal_flow_residual, FUDGE, max_y, args=(slope,bnd_Q,width))
+                                        print('y_norm=',y_norm)
+                                        self.grid.at_node['hydraulic__head'][bnd_node] = y_norm + self.grid.at_node['junction__elevation'][bnd_node]
+                        elif outflow_bnd_type=='outfall':
+                            if equiv_upstream_flow_depth>self.grid.at_link['maximum__depth'][boundary_link]:
+                                equiv_upstream_flow_depth=self.grid.at_link['maximum__depth'][boundary_link]
+                            #This works for square conduit only
+                            y_crit = (bnd_Q**2/width**2/self.g)**(1./3.)
+                            self.grid.at_node['hydraulic__head'][bnd_node] = y_crit + self.grid.at_node['junction__elevation'][bnd_node]
 
             #Check for convergence
             if num_iterations>0:
