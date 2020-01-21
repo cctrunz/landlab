@@ -93,7 +93,8 @@ class PresFlowNetwork(Component):
     }
 
     def __init__(self, grid, flow_eqn='Darcy-Weisbach',
-                    shape_factor=np.pi, g=9.81, f=0.1, solutes=None,
+                    shape_factor=np.pi, g=9.81, f=0.1, dt=1.,
+                    solutes=None,
                     transfer_func=None,
                     transfer_func_link_variables=[],
                     transfer_kwd_args={},
@@ -119,6 +120,8 @@ class PresFlowNetwork(Component):
             )
         self.g = g
         self.f = f
+        self.dt = dt
+        self.num_steps = 0
         self.Theta = 0.5 #Relaxation factor for flow solution iterations
         self.shape_factor = shape_factor
         ##Create fields
@@ -345,13 +348,13 @@ class PresFlowNetwork(Component):
                     self.grid.at_link[link_var][node_outflow_links] = new_link_value_dict[link_var]
 
 
-    def dyn_wave_solution(self, dt=500., outflow_bnd_type = 'head'):
+    def dyn_wave_solution(self, dt_min=1., dt_max=500., dt_update_every=10, outflow_bnd_type = 'head', Cr=1):
         """
         Dynamic wave solver based on algorithm used in SWMM. Inertial terms are neglected.
         Here we use this solver only as a means of calculating steady flow.
         """
         #Determine flow depths at upstream and downstream ends of links
-        FUDGE = 0.000001
+        FUDGE = 0.0001
         active_links = self.grid.active_links
         head_nodes = self.grid.node_at_link_head[active_links]
         tail_nodes = self.grid.node_at_link_tail[active_links]
@@ -393,8 +396,8 @@ class PresFlowNetwork(Component):
             #print('D_H=',self.d_h)
             U = self.Q[active_links]/A_avg
             #print('U=',U)
-            dQ_pres = self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*dt#Original had a negative sign in front of this term. seems to work without. (check this)
-            dQ_fric = self.f*np.abs(U)/(2.*self.d_h[active_links])*dt
+            dQ_pres = self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*self.dt#Original had a negative sign in front of this term. seems to work without. (check this)
+            dQ_fric = self.f*np.abs(U)/(2.*self.d_h[active_links])*self.dt
             #print('dQ_pres=',dQ_pres)
             #print('dQ_fric=',dQ_fric)
             Q_new = (Q_old[active_links] + dQ_pres) / (1. + dQ_fric)
@@ -415,7 +418,7 @@ class PresFlowNetwork(Component):
             #This seemed to fix test case 2. Maybe there is something funny with discharge
             #signs to begin with. Go back through landlab grid specs to check my procedure.
             Q_sum_new = self.grid.calc_net_flux_at_node(self.Q)[self.grid.core_nodes]/self.grid.dx + self.grid.at_node['input__discharge'][self.grid.core_nodes]
-            dh = 0.5*dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
+            dh = 0.5*self.dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
             h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
 
@@ -436,18 +439,18 @@ class PresFlowNetwork(Component):
                             if equiv_upstream_flow_depth>=self.grid.at_link['maximum__depth'][boundary_link]:
                                 self.grid.at_node['hydraulic__head'][bnd_node] = self.grid.at_link['maximum__depth'][boundary_link] + self.grid.at_node['junction__elevation'][bnd_node]#equiv_upstream_flow_depth*0.95
                             else:
-                                print("Entering normal flow calc.")
+                                #print("Entering normal flow calc.")
                                 #Set depth to that of normal flow given the current discharge
                                 slope = (self.grid.at_node['junction__elevation'][upstream_node] - self.grid.at_node['junction__elevation'][bnd_node])/self.grid.length_of_link[boundary_link]
-                                print('slope=',slope, '  Q=',self.Q[boundary_link])
+                                #print('slope=',slope, '  Q=',self.Q[boundary_link])
                                 if slope >0 and abs(self.Q[boundary_link])>FUDGE: #This fails for flat conduits or conduits with zero Q
-                                    print("equiv_upstream_flow_depth=",equiv_upstream_flow_depth)
+                                    #print("equiv_upstream_flow_depth=",equiv_upstream_flow_depth)
                                     max_y = self.grid.at_link['maximum__depth'][boundary_link]
     #                                print(slope, width, bnd_Q)
-                                    print('f(a)=',self.normal_flow_residual(equiv_upstream_flow_depth/2., slope, bnd_Q,width), '  f(b)=',self.normal_flow_residual(max_y, slope, bnd_Q,width))
+                                    #print('f(a)=',self.normal_flow_residual(equiv_upstream_flow_depth/2., slope, bnd_Q,width), '  f(b)=',self.normal_flow_residual(max_y, slope, bnd_Q,width))
                                     if self.normal_flow_residual(FUDGE, slope, bnd_Q,width)*self.normal_flow_residual(max_y, slope, bnd_Q,width)<0:
                                         y_norm = brentq(self.normal_flow_residual, FUDGE, max_y, args=(slope,bnd_Q,width))
-                                        print('y_norm=',y_norm)
+                                        #print('y_norm=',y_norm)
                                         self.grid.at_node['hydraulic__head'][bnd_node] = y_norm + self.grid.at_node['junction__elevation'][bnd_node]
                         elif outflow_bnd_type=='outfall':
                             if equiv_upstream_flow_depth>self.grid.at_link['maximum__depth'][boundary_link]:
@@ -459,12 +462,49 @@ class PresFlowNetwork(Component):
             #Check for convergence
             if num_iterations>0:
                 max_change_h = max(h_new - self.h[self.grid.core_nodes])
-                print('max change in h: ', max_change_h)
+                #print('max change in h: ', max_change_h)
                 if max_change_h < 0.0001:
                     converged=True
             self.h[self.grid.core_nodes] = h_new
+
             num_iterations+=1
+        #Calculate new timestep
+        if (self.num_steps % dt_update_every == 0):
+            nonzero_flow = abs(U)>0
+            Fr = abs(U[nonzero_flow])/np.sqrt(self.g * A_avg[nonzero_flow] /self.grid.at_link['width'][active_links][nonzero_flow])
+            #print('Fr=',Fr)
+            dt_Cr = self.grid.length_of_link[active_links][nonzero_flow]/abs(U[nonzero_flow]) * (Fr/(1+Fr))*Cr
+            neg_Fr = 0.001
+            dt_Cr = dt_Cr[Fr>neg_Fr]
+            if np.size(dt_Cr)>0:
+                dt_Cr = dt_Cr.min()
+            else:
+                dt_Cr = 1./FUDGE
+            #Smallest possible from head change in timestep
+            offsets = np.zeros(np.shape(self.grid.links_at_node))
+            # Need to check this direction, and how it relates to sign of Q
+            offsets[self.grid.link_dirs_at_node==1] = self.grid.at_link['conduit_tail__offset'][self.grid.links_at_node][self.grid.link_dirs_at_node==1]
+            offsets[self.grid.link_dirs_at_node==-1] = self.grid.at_link['conduit_head__offset'][self.grid.links_at_node][self.grid.link_dirs_at_node==1]
+            Y_crown = offsets + self.grid.at_link['maximum__depth'][self.grid.links_at_node]
+            Y_crown = Y_crown[self.grid.core_nodes].max(axis=1)
+            prev_dh = abs(h_new - h_old[self.grid.core_nodes])
+            dt_h = 0.25*Y_crown[prev_dh!=0]/prev_dh[prev_dh!=0]
+            if np.size(dt_h)>0:
+                dt_h = dt_h.min()
+            else:
+                dt_h = 1./FUDGE
+            dt_stable = np.min([dt_h,dt_Cr,dt_max])
+            if dt_stable<dt_min:
+                self.dt = dt_min
+            elif dt_stable>dt_max:
+                self.dt = dt_max
+            else:
+                self.dt = dt_stable
+            print('dt=',self.dt, '   dt_h=',dt_h, '  dt_Cr=',dt_Cr)
+
+        self.num_steps += 1
         print("average dh=",np.mean(dh), '  average abs(dQ)=', np.mean(dQ))
+        print('num iters=',num_iterations)
 
 
 
