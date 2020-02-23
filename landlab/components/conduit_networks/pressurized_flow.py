@@ -1,9 +1,12 @@
-from landlab import Component, FieldError
 import numpy as np
 from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
 from scipy.optimize import fsolve, brentq
 import time
+
+from landlab import Component, FieldError
+
+from ShapeGen import genCirc
 #from numba import jit
 
 
@@ -98,6 +101,8 @@ class PresFlowNetwork(Component):
                     transfer_func=None,
                     transfer_func_link_variables=[],
                     transfer_kwd_args={},
+                    cross_sections=None,
+                    cross_section_points = 500,
                     **kwds):
         """
         Initialize the PresFlowNetwork
@@ -174,6 +179,24 @@ class PresFlowNetwork(Component):
         self.transfer_func = transfer_func
         self.transfer_func_link_variables = transfer_func_link_variables
         self.transfer_kwd_args = transfer_kwd_args
+        if cross_sections != None:
+            self.use_cross_sections = True
+            #Set initial cross sections according to string describing shape
+            if 'circ' in cross_sections.lower():
+                #Set circular cross sections
+                xc_x, xc_y = genCirc(self.d_h/2., d=cross_section_points)
+                self.xc_x = grid.add_field('link', 'cross_section__x', xc_x)
+                self.xc_y = grid.add_field('link', 'cross_section__y', xc_y)
+                self.xc_xm = np.roll(self.xc_x,1)
+                self.xc_ym = np.roll(self.xc_y,1)
+                self.xc_xp = np.roll(self.xc_x,self.xc_x.size-1)
+                self.xc_yp = np.roll(self.xc_y, self.xc_y.size-1)
+            #Later add other shapes? Such as fracture
+            else:
+                raise FieldError('Invalid string for cross section type: '+str(cross_sections))
+        else:
+            self.use_cross_sections = False
+
 
     def calc_r(self):
         """
@@ -365,6 +388,12 @@ class PresFlowNetwork(Component):
         converged = False
         num_iterations = 0
         max_iterations = 50
+        #If using custom cross-sections, calculate maximum flow depths
+        if self.use_cross_sections:
+            #Calculate maximum depths from cross section shapes
+            ymins = self.xc_y.min(axis=1)
+            ymaxs = self.xc_y.max(axis=1)
+            self.grid.at_link['maximum__depth'] = ymaxs - ymins
         while not converged and num_iterations<max_iterations:
             h_head = self.h[head_nodes]
             h_tail = self.h[tail_nodes]
@@ -386,14 +415,21 @@ class PresFlowNetwork(Component):
             #y_avg[y_avg<FUDGE] = FUDGE
             y_avg = 0.5*(y_head + y_tail) #This is used in SWMM, I think upstream y may work better for steady flow.
             #Using the upstream value seems to rid of strange downstream boundary effects that impact entire network
-            #Calculate flow XC area for square XCs
-            A_avg = self.grid.at_link['width'][active_links] * y_avg
+            if self.use_cross_sections:
+                #Create boolean index for wet portion of xc
+                xc_flow_height_y = y_avg + ymins[active_links]
+                #This next line is kinda ugly but creates an array of same shape as xc_y to compare xc_y against flow depths
+                #I think this will be faster than alternative options, which might require a for loop
+                flow_height_xc_shape = np.broadcast_to(xc_flow_height_y, self.xc_y[active_links].transpose().shape).transpose()
+                xc_where_wet = self.xc_y[active_links]<flow_height_xc_shape
+                A_avg = self.calc_xc_A(wantidx=xc_where_wet, only_active_links=True)
+                Pw = self.calc_xc_P(wantidx=xc_where_wet, only_active_links=True)
+                self.d_h[active_links] = 4.*A_avg/Pw
+            else: #Later may want to enable generic shapes as a possibility, now default to square
+                #Calculate flow XC area for square XCs
+                A_avg = self.grid.at_link['width'][active_links] * y_avg
+                self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
             A_avg[A_avg<FUDGE] = FUDGE
-            #print('y=',y_avg)
-            #print('A=',A_avg)
-            #Calculate hydraulic diameters and write into grid values
-            self.d_h[active_links] = self.d_h_square(self.grid.at_link['width'][active_links], y_avg)
-            #print('D_H=',self.d_h)
             U = self.Q[active_links]/A_avg
             #print('U=',U)
             dQ_pres = self.g*A_avg*(h_head - h_tail)/self.grid.length_of_link[active_links]*self.dt#Original had a negative sign in front of this term. seems to work without. (check this)
@@ -421,6 +457,10 @@ class PresFlowNetwork(Component):
             dh = 0.5*self.dt*(Q_sum_new + Q_sum_old)/self.grid.at_node['storage'][self.grid.core_nodes]
             h_new = h_old[self.grid.core_nodes] + dh
             h_new = (1. - self.Theta)*self.h[self.grid.core_nodes] + self.Theta*h_new
+
+    #######
+    #### Need to fix non-head bnd conds for custom cross-sections, revisit SWMM docs
+    #######
 
             if outflow_bnd_type!='head':
                 #Adjust boundary heads on open boundaries
@@ -469,6 +509,11 @@ class PresFlowNetwork(Component):
 
             num_iterations+=1
         #Calculate new timestep
+
+##################
+####  Need to fix time step calc for custom xc
+#############3
+
         if (self.num_steps % dt_update_every == 0):
             nonzero_flow = abs(U)>0
             Fr = abs(U[nonzero_flow])/np.sqrt(self.g * A_avg[nonzero_flow] /self.grid.at_link['width'][active_links][nonzero_flow])
@@ -509,6 +554,53 @@ class PresFlowNetwork(Component):
 
 
         #return self.Q
+
+    ##############################################
+    #### Calculations for cross-section shapes
+    ##############################################
+
+    def calc_xc_A(self, wantidx = None, only_active_links=True):
+        #Filter by only active links if keyword set
+        if only_active_links:
+            al = self.grid.active_links
+            xm = self.xc_xm[al]
+            x = self.xc_x[al]
+            ym = self.xc_ym[al]
+            y = self.xc_y[al]
+        else:
+            xm = self.xc_xm
+            x = self.xc_x
+            ym = self.xc_ym
+            y = self.xc_y
+
+        sA = (xm*y - x*ym) * 0.5
+        #Not sure if this strategy is the most efficient. It does many unnecessary
+        #calcs if we only want part of area, however, it maintains equal shapes so
+        #by padding with zeros so that all xc areas can be calculated in one array operation
+        if type(wantidx) != type(None):
+            sA[~wantidx]=0
+        return np.fabs(sA.sum(axis=1))
+
+    def calc_xc_P(self, wantidx=None, only_active_links=True):
+        if only_active_links:
+            al = self.grid.active_links
+            x = self.xc_x[al]
+            xp = self.xc_xp[al]
+            y = self.xc_y[al]
+            yp = self.xc_yp[al]
+        else:
+            x = self.xc_x
+            xp = self.xc_xp
+            y = self.xc_y
+            yp = self.xc_yp
+        l = np.hypot(x - xp, y-yp)
+        #See note in area calc. This might also be made more efficient. Not sure.
+        if type(wantidx) != type(None):
+            l[~wantidx] = 0.
+        return np.sum(l,axis=1)
+
+
+
 
     def d_h_square(self, width, flow_depth):
         d_H = np.zeros(np.size(width))
