@@ -79,7 +79,7 @@ def run1Dsim(nsteps=1000,
         mc.run_one_step()
         time += dt
         if (step % every)==0: #make an animation frame
-            print "step =",step, " avg d_h=",mg.at_link['hydraulic__diameter'].mean()
+            print("step =",step, " avg d_h=",mg.at_link['hydraulic__diameter'].mean())
             plt.subplot(3,1,1)
             #imshow_grid_at_node(mg, h)
             plt.plot(mg.at_node['hydraulic__head'][mg.core_nodes])

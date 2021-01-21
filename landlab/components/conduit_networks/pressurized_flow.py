@@ -6,7 +6,7 @@ import time
 
 from landlab import Component, FieldError
 
-from ShapeGen import genCirc
+from .ShapeGen import genCirc
 #from numba import jit
 
 
