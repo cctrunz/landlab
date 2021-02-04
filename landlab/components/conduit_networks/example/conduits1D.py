@@ -6,66 +6,75 @@ import matplotlib.pyplot as plt
 
 
 def run1Dsim(nsteps=1000,
-             nx=50,
+             nx=50, #number of nodes
              dt=500.,
              L=10000.,
-             Zmax=500.,
+             Zmax=500., # linear change in ice thickness between max and min
              Zmin = None,
-             Zslope =0.,
+             Zslope = 0., # or can set a slope
              Qpeak = 2.,
              Qbase = 0.,
              Qsteady=False,
              period = 24.*60.*60., 
              bedslope =0.,
-             A_R = 50.,
-             D0 = 0.5,
-             hin=400.,
-             hout=0.,
-             every=10,
-             hymin=0.,
-             hymax=1000.,
-             dymin=0.,
-             dymax=3.):
+             A_R = 50., # moulin cross-section area
+             D0 = 0.5, # initial hydraulic diameter of the conduit
+             hin=400., # initial upstream head
+             hout=0., # intial downstrem head
+             every=10, # how frequently to record data or make plots
+             hymin=0., # plot limits
+             hymax=1000., # plot limits
+             dymin=0., # plot limits
+             dymax=3.): # plot limits
 
+    #figure out what the node spacing is
     dx = L/(nx-1)
-    mg = RasterModelGrid((3,nx),dx)
-    junc_elev = mg.add_zeros('node', 'junction__elevation')
-    mg.at_node['junction__elevation'] = bedslope*(mg.node_x - L)
-    R = mg.add_zeros('node', 'input__discharge')
+    mg = RasterModelGrid((3,nx),dx) #3 cells wide because no flow boundary on the edges
+    junc_elev = mg.add_zeros('node', 'junction__elevation') #create elevation for the nodes
+    mg.at_node['junction__elevation'] = bedslope*(mg.node_x - L) # add values in the nodes for elevation based on baseslope and distance from the edge
+    R = mg.add_zeros('node', 'input__discharge') # possibility for recharge for all nodes
     #d_h = mg.add_ones('link', 'hydraulic__diameter')
-    d_h = mg.add_zeros('link','hydraulic__diameter')
+    d_h = mg.add_zeros('link','hydraulic__diameter') # 4x.. look up formula semi-circular
     mg.at_link['hydraulic__diameter'][mg.active_links]= D0 
 
-    h = mg.add_zeros('node', 'hydraulic__head')
+    h = mg.add_zeros('node', 'hydraulic__head') #initialize head at 0
+    #choose to use slope of thickness
     if Zmin != None:
-        Zslope = (Zmax - ZMin)/L
-    thickness = Zmax*np.ones(mg.number_of_nodes) - Zslope*mg.node_x
-    Z = mg.add_field('node', 'ice__thickness', thickness)
-    Q = mg.add_zeros('link', 'conduit__discharge')
+        Zslope = (Zmax - Zmin)/L
+    thickness = Zmax*np.ones(mg.number_of_nodes) - Zslope*mg.node_x #initialize ice thickness at 0
+    Z = mg.add_field('node', 'ice__thickness', thickness) #create variables and set them to values of thickness
+    Q = mg.add_zeros('link', 'conduit__discharge') #create variable and set to zero
     
+    #Boundary conditions
     #set heads at edges
     h[mg.nodes_at_left_edge] = hin
     h[mg.nodes_at_right_edge] = hout
     h[mg.nodes_at_top_edge] = 0.
     h[mg.nodes_at_bottom_edge] = 0.
-    mg.set_closed_boundaries_at_grid_edges(False,True,False,True)
-    Q[mg.active_links] = 1.
-    pfn = PresFlowNetwork(mg)
-    pfn.run_one_step()
-    mc = MeltCreep(mg, dt=dt)
+    mg.set_closed_boundaries_at_grid_edges(False,True,False,True) # for the edges
+    Q[mg.active_links] = 1. # set all the discharge to 1 (initialization)
+    #
+    pfn = PresFlowNetwork(mg) # pressurized flow network conduit -- python object that contains the ... for flow
+    pfn.run_one_step() # solves for the flow -- 
+    mc = MeltCreep(mg, dt=dt) # solves for melt and creep -- output hydraulic diameter
+
+    #type of QIN
     def moulin_recharge(t):
         if not Qsteady:
             return Qpeak*(1. + np.sin(2*np.pi*t/period))/2. + Qbase
         else:
             return Qpeak
 
+    #PLOTS
     fig1, axs = plt.subplots(3,1,figsize=(6,10))
     time = 0.
     time_list = []
     h_list = []
     d_list = []
-    q_list = []
+    q_list = [] #discharge
     r_list = []
+
+
     for step in np.arange(nsteps):
         pfn.run_one_step()
         Qnow = Q[mg.active_links][0]
@@ -76,9 +85,9 @@ def run1Dsim(nsteps=1000,
         time_list.append(time)
         h_list.append(mg.at_node['hydraulic__head'][mg.core_nodes])#[nx:2*nx])
         d_list.append(mg.at_link['hydraulic__diameter'][mg.active_links])
-        mc.run_one_step()
-        time += dt
-        if (step % every)==0: #make an animation frame
+        mc.run_one_step() #calculate new hydraulic diameter
+        time += dt #update time
+        if (step % every)==0: #make an animation frame -- if remainder is 0 create a plot
             print("step =",step, " avg d_h=",mg.at_link['hydraulic__diameter'].mean())
             plt.subplot(3,1,1)
             #imshow_grid_at_node(mg, h)
