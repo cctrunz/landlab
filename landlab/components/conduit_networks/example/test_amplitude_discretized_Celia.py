@@ -125,20 +125,7 @@ time_arr = np.array(time_list)
 results = {'h':h_arr, 'q':q_arr, 'r':r_arr,'d':d_arr,'t':time_arr}
 
 
-#%%to plot 1 position for all timesteps:
-time_day = time_arr/3600/24
 
-position = 0
-hx = h_arr[:,position]
-plt.figure()
-plt.plot(time_list,hx)
-
-#to plot 1 timestep for all position:
-x = np.linspace(dx/2,nx*dx,nx-1)
-timestep = 500
-diameter = d_arr[timestep,:]
-plt.figure()
-plt.plot(x,diameter)
 
 #%%to plot multiple timesteps for all position:
 plt.figure()
@@ -163,13 +150,6 @@ for timestep,c in zip(iterations,color):
 plt.ylabel('head (m)')
 plt.xlabel('distance from moulin (km)')
     
-#%%to plot multiple timesteps for all position:
-plt.figure()
-plt.plot(time_day,r_arr,color='black',label='Qin')
-plt.plot(time_day,q_arr,color='blue',label='Qout')
-plt.legend()
-
-
 #%%
 plt.figure()
 time_day = time_arr/3600/24
