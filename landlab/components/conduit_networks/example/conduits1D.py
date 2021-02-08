@@ -19,20 +19,19 @@ def run1Dsim(nsteps=1000,
              Zmax = None, # linear change in ice thickness between max and min
              Zmin = None,
              Zslope = None, # or can set a slope
-             Qpeak = 2.,
-             Qbase = 0.,
-             Qsteady=False,
+             #choose qin type:
+             Qin_type = 'oscillating',
+             Qpeak = 2,
+             Qbase = 0,
+             Qsteady = False,
+             Qtime_data = None, 
+             Qin_data = None,
              period = 24.*60.*60., 
              bedslope =0.,
              A_R = 50., # moulin cross-section area
              D0 = 0.5, # initial hydraulic diameter of the conduit
-             hin=400., # initial upstream head
-             hout=0., # intial downstrem head
-             # every=10, # how frequently to record data or make plots
-             # hymin=0., # plot limits
-             # hymax=1000., # plot limits
-             # dymin=0., # plot limits
-             # dymax=3.): # plot limits
+             hin = 400., # initial upstream head
+             hout = 0., # intial downstrem head
              ):
     #figure out what the node spacing is
     dx = L/(nx-1)
@@ -78,13 +77,16 @@ def run1Dsim(nsteps=1000,
 
     #type of QIN
     def moulin_recharge(t):
-        if not Qsteady:
-            return Qpeak*(1. + np.sin(2*np.pi*t/period))/2. + Qbase
-        else:
+        
+        if Qin_type == 'steady':
             return Qpeak
+        if Qin_type == 'oscillating':
+            return Qpeak*(1. + np.sin(2*np.pi*t/period))/2. + Qbase
+        if Qin_type == 'custom_array':
+            return np.interp(t, Qtime_data, Qin_data)
+            
 
-    #PLOTS
-    #fig1, axs = plt.subplots(3,1,figsize=(6,10))
+
     time = 0.
     time_list = []
     h_list = []
@@ -107,25 +109,6 @@ def run1Dsim(nsteps=1000,
         d_list.append(mg.at_link['hydraulic__diameter'][mg.active_links])
         mc.run_one_step() #calculate new hydraulic diameter
         time += dt #update time
-        # if (step % every)==0: #make an animation frame -- if remainder is 0 create a plot
-        #     print("step =",step, " avg d_h=",mg.at_link['hydraulic__diameter'].mean())
-        #     plt.subplot(3,1,1)
-        #     #imshow_grid_at_node(mg, h)
-        #     plt.plot(mg.at_node['hydraulic__head'][mg.core_nodes])
-        #     plt.ylabel('Hydraulic head')
-        #     plt.ylim([hymin,hymax])
-        #     plt.subplot(3,1,2)
-        #     plt.plot(mg.at_link['conduit__discharge'][mg.active_links])
-        #     plt.ylabel('Discharge')
-        #     plt.ylim([0,Qpeak*1.25])
-        #     plt.subplot(3,1,3)
-        #     plt.plot(mg.at_link['hydraulic__diameter'][mg.active_links])
-        #     plt.ylabel('Diameter')
-        #     plt.ylim([dymin,dymax])
-        #     image_name = 'heads_and_discharge'+str(step).zfill(6)+'.png'
-        #     plt.tight_layout()
-        #     plt.savefig(image_name)
-        #     fig1.clf()
     h_arr = np.array(h_list)
     q_arr = np.array(q_list)
     r_arr = np.array(r_list)
